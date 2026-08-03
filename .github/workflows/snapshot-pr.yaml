@@ -9,7 +9,7 @@ jobs:
   resolve:
     permissions:
       contents: read
-      pull-requests: read
+      pull-requests: write # write is required so the gate step can post the sensitive-files comment
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     outputs:
@@ -20,8 +20,12 @@ jobs:
       - uses: ./.github/actions/download-artifact
       - id: metadata
         run: |
+          # The review body is line 1; keeping only its first line guards against
+          # multi-line bodies injecting extra step outputs via embedded newlines.
+          command="$(head -n 1 /tmp/artifacts/metadata.txt)"
           pr_number="$(head -n 2 /tmp/artifacts/metadata.txt | tail -n 1)"
           pr_commit="$(tail -n 1 /tmp/artifacts/metadata.txt)"
+          echo "COMMAND=${command}" >> "$GITHUB_OUTPUT"
           echo "PR_COMMIT=${pr_commit}" >> "$GITHUB_OUTPUT"
           echo "PR_NUMBER=${pr_number}" >> "$GITHUB_OUTPUT"
       - id: verify
@@ -54,6 +58,54 @@ jobs:
 
             core.info(`Verified: ${validReview.user.login} reviewed commit ${prCommit}`);
             core.setOutput('PR_COMMIT', prCommit);
+      # Block snapshots of PRs that touch files which execute on the snapshot runner
+      # while it holds the OIDC credentials (Makefile, hack scripts, composite actions,
+      # workflows, build config). A malicious contributor could otherwise slip a
+      # credential-leaking change into one of these and have a maintainer's /karpenter
+      # snapshot run it. A maintainer who has vetted the change can re-run with
+      # `/karpenter snapshot-override` (still member-gated by ApprovalComment).
+      # This runs in the resolve job, which executes from the base branch (main) and
+      # never checks out PR code, so the check itself cannot be tampered with.
+      - id: gate
+        if: ${{ !endsWith(steps.metadata.outputs.COMMAND, 'snapshot-override') }}
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PR_NUMBER: ${{ steps.metadata.outputs.PR_NUMBER }}
+        with:
+          script: |
+            const prNumber = parseInt(process.env.PR_NUMBER, 10);
+
+            // Broad denylist of paths that influence what runs on the snapshot
+            // runner. Matched against the PR's changed files (relative to base).
+            const isSensitive = (f) =>
+              f.startsWith('.github/') ||
+              f.startsWith('hack/') ||
+              f === 'Makefile' ||
+              f === 'go.mod' ||
+              f === 'go.sum' ||
+              f.endsWith('.sh');
+
+            const files = await github.paginate(
+              github.rest.pulls.listFiles,
+              { owner: context.repo.owner, repo: context.repo.repo, pull_number: prNumber }
+            );
+
+            const sensitive = files.map(f => f.filename).filter(isSensitive);
+
+            if (sensitive.length > 0) {
+              const list = sensitive.map(f => `\`${f}\``).join(', ');
+              await github.rest.issues.createComment({
+                issue_number: prNumber,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `Note: this PR changes sensitive files that execute during the snapshot build (${list}). ` +
+                  `Snapshot was **not** run. A maintainer who has reviewed these changes can re-run with \`/karpenter snapshot-override\` if this is fine.`
+              });
+              core.setFailed(`Snapshot blocked: PR changes sensitive files: ${sensitive.join(', ')}`);
+              return;
+            }
+
+            core.info('No sensitive files changed; proceeding with snapshot.');
 
   snapshot:
     needs: [resolve]
