@@ -1,0 +1,67 @@
+name: DependabotE2E
+# Every Sunday, run the E2E matrix against each open Dependabot PR so results are
+# ready for the Monday on-call review, instead of on-call manually triggering a
+# snapshot on each PR.
+#
+# Trust model: a *scheduled* trigger from the upstream repo is already an accepted
+# path to run E2E (see the header comment in e2e-matrix.yaml). We additionally
+# scope the PRs strictly to the verified Dependabot bot account (id 49699333),
+# which GitHub sets server-side and cannot be spoofed by a look-alike author.
+on:
+  schedule:
+    - cron: '0 6 * * 0' # Sundays 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      region:
+        type: choice
+        options:
+          - "us-east-1"
+          - "us-east-2"
+        default: "us-east-2"
+jobs:
+  discover:
+    if: github.repository == 'aws/karpenter-provider-aws'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      matrix: ${{ steps.find.outputs.matrix }}
+      has_prs: ${{ steps.find.outputs.has_prs }}
+    steps:
+      - id: find
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const DEPENDABOT_ID = 49699333; // github.com/apps/dependabot
+            const prs = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100,
+            });
+            const include = prs
+              .filter(p => p.user && p.user.id === DEPENDABOT_ID)
+              .map(p => ({ pr: p.number, git_ref: p.head.sha }));
+            core.setOutput('matrix', JSON.stringify({ include }));
+            core.setOutput('has_prs', include.length > 0 ? 'true' : 'false');
+            core.info(`Found ${include.length} open Dependabot PR(s): ${include.map(i => '#' + i.pr).join(', ') || 'none'}`);
+  e2e:
+    needs: [discover]
+    if: needs.discover.outputs.has_prs == 'true'
+    permissions:
+      id-token: write # aws-actions/configure-aws-credentials
+      statuses: write # ./.github/actions/commit-status/start
+      actions: read # e2e-matrix.yaml summary job (download-artifact)
+      contents: read # e2e-matrix.yaml summary job (checkout)
+    strategy:
+      fail-fast: false
+      max-parallel: 1 # E2E runs are expensive and use cloud accounts; serialize them
+      matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
+    uses: ./.github/workflows/e2e-matrix.yaml
+    with:
+      git_ref: ${{ matrix.git_ref }}
+      region: ${{ inputs.region || 'us-east-2' }}
+      workflow_trigger: "dependabot"
+      cleanup: true
+    secrets:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

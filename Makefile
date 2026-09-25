@@ -227,6 +227,9 @@ update-karpenter: ## Update kubernetes-sigs/karpenter to latest
 	go get -u sigs.k8s.io/karpenter@HEAD
 	go mod tidy
 
+bump-kubernetes: ## Bump the coupled Kubernetes library cluster to a target minor, e.g. make bump-kubernetes K8S_MINOR=1.34 (see hack/RUNBOOK-kubernetes-version-bump.md)
+	hack/bump-kubernetes.sh $(K8S_MINOR)
+
 .PHONY: deploy-cfn
 deploy-cfn: ## Deploys the cloudformation stack defined in the docs preview directory
 	aws cloudformation deploy \

@@ -5,11 +5,25 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+      # Land the grouped Go PR on Saturday so the Sunday dependabot e2e run
+      # (.github/workflows/dependabot-e2e.yaml) has fresh PRs to validate before
+      # the Monday on-call review.
+      day: "saturday"
     ignore:
-      # We are currently pinning to pseudo-version for sigs.k8s.io/karpenter package, so that we can take later changes into the AWS provider. 
+      # We are currently pinning to pseudo-version for sigs.k8s.io/karpenter package, so that we can take later changes into the AWS provider.
       # This may change later, but this is how we have it configured right now.
       # https://github.com/aws/karpenter-provider-aws/issues/7826
       - dependency-name: sigs.k8s.io/karpenter
+      # The Kubernetes library cluster (k8s.io/*, sigs.k8s.io/*, knative.dev/*) is
+      # coupled to the Kubernetes minor we target and must move in lockstep, so we
+      # bump it manually via `make bump-kubernetes` (see hack/RUNBOOK-kubernetes-version-bump.md).
+      # Dependabot may still open patch-level PRs for these; only minor/major are ignored.
+      - dependency-name: "k8s.io/*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "sigs.k8s.io/*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "knative.dev/*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       # Group updates together, so that they are all applied in a single PR.
       # Grouped updates are currently in beta and is subject to change.
