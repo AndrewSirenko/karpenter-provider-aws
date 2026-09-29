@@ -153,6 +153,8 @@ func NewDefaultProvider(
 	return p
 }
 
+// +karpenter:complete-instance-types
+//
 //nolint:gocyclo
 func (p *DefaultProvider) List(ctx context.Context, nodeClass NodeClass) ([]*cloudprovider.InstanceType, error) {
 	p.muInstanceTypesInfo.RLock()
