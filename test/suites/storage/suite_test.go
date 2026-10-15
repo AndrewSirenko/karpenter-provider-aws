@@ -228,6 +228,43 @@ var _ = Describe("Persistent Volumes", func() {
 			env.EventuallyExpectHealthy(pods[1])
 			env.ExpectCreatedNodeCount("==", 2)
 		})
+		It("should launch enough nodes for every volume in a single scheduling pass", func() {
+			// m7i.xlarge has a dedicated limit of 32 EBS attachments, one of which is the root volume.
+			// A shared limit type would also count the ENIs the VPC CNI attaches after boot.
+			test.ReplaceRequirements(nodePool, karpv1.NodeSelectorRequirementWithMinValues{
+				Key:      corev1.LabelInstanceTypeStable,
+				Operator: corev1.NodeSelectorOpIn,
+				Values:   []string{"m7i.xlarge"},
+			})
+			count := 50
+			podLabels := map[string]string{"app": "volume-limits"}
+			pvcs := lo.Times(count, func(_ int) *corev1.PersistentVolumeClaim {
+				return test.PersistentVolumeClaim(test.PersistentVolumeClaimOptions{
+					StorageClassName: &storageClass.Name,
+				})
+			})
+			pods := lo.Map(pvcs, func(pvc *corev1.PersistentVolumeClaim, _ int) *corev1.Pod {
+				return test.Pod(test.PodOptions{
+					ObjectMeta:             metav1.ObjectMeta{Labels: podLabels},
+					PersistentVolumeClaims: []string{pvc.Name},
+				})
+			})
+
+			env.ExpectCreated(nodeClass, nodePool, storageClass)
+			for i := range pvcs {
+				env.ExpectCreated(pvcs[i], pods[i])
+			}
+			env.EventuallyExpectHealthyPodCount(labels.SelectorFromSet(podLabels), count)
+			env.ExpectCreatedNodeCount("==", 2)
+
+			nodeClaims := env.EventuallyExpectCreatedNodeClaimCount("==", 2)
+			for _, nodeClaim := range nodeClaims {
+				registered := nodeClaim.StatusConditions().Get(karpv1.ConditionTypeRegistered).LastTransitionTime.Time
+				for _, other := range nodeClaims {
+					Expect(other.CreationTimestamp.Time).To(BeTemporally("<", registered))
+				}
+			}
+		})
 		It("should run a pod with a generic ephemeral volume", func() {
 			pod := test.Pod(test.PodOptions{
 				EphemeralVolumeTemplates: []test.EphemeralVolumeTemplateOptions{{
