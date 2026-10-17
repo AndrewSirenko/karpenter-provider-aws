@@ -32,6 +32,7 @@ import (
 	"github.com/aws/karpenter-provider-aws/pkg/operator/options"
 	"github.com/aws/karpenter-provider-aws/pkg/test"
 
+	karpv1 "sigs.k8s.io/karpenter/pkg/apis/v1"
 	coreoptions "sigs.k8s.io/karpenter/pkg/operator/options"
 	coretest "sigs.k8s.io/karpenter/pkg/test"
 
@@ -116,6 +117,16 @@ var _ = Describe("SubnetProvider", func() {
 					VpcId:                   lo.ToPtr("vpc-test1"),
 				},
 			}, subnets)
+		})
+		It("should mark subnets with no free IPs as unavailable", func() {
+			awsEnv.EC2API.DescribeSubnetsBehavior.Output.Set(&ec2.DescribeSubnetsOutput{Subnets: []ec2types.Subnet{
+				{SubnetId: aws.String("subnet-full"), AvailabilityZone: aws.String("test-zone-1a"), AvailabilityZoneId: aws.String("tstz1-1a"), AvailableIpAddressCount: aws.Int32(0)},
+				{SubnetId: aws.String("subnet-free"), AvailabilityZone: aws.String("test-zone-1b"), AvailabilityZoneId: aws.String("tstz1-1b"), AvailableIpAddressCount: aws.Int32(10)},
+			}})
+			_, err := awsEnv.SubnetProvider.List(ctx, nodeClass)
+			Expect(err).To(BeNil())
+			Expect(awsEnv.UnavailableOfferingsCache.IsUnavailable(ec2types.InstanceTypeM5Large, "test-zone-1a", []string{"subnet-full"}, karpv1.CapacityTypeOnDemand)).To(BeTrue())
+			Expect(awsEnv.UnavailableOfferingsCache.IsUnavailable(ec2types.InstanceTypeM5Large, "test-zone-1b", []string{"subnet-free"}, karpv1.CapacityTypeOnDemand)).To(BeFalse())
 		})
 		It("should discover subnets by IDs", func() {
 			nodeClass.Spec.SubnetSelectorTerms = []v1.SubnetSelectorTerm{

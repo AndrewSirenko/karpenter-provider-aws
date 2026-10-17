@@ -131,7 +131,8 @@ below are the resources available with some assumptions and after the instance o
 	for _, region := range []string{"us-east-1", "us-east-2", "us-west-2"} {
 		cfg := lo.Must(config.LoadDefaultConfig(ctx, config.WithRegion(region)))
 		ec2api := ec2.NewFromConfig(cfg)
-		subnetProvider := subnet.NewDefaultProvider(ec2api, cache.New(awscache.DefaultTTL, awscache.DefaultCleanupInterval), cache.New(awscache.AvailableIPAddressTTL, awscache.DefaultCleanupInterval))
+		unavailableOfferingsCache := awscache.NewUnavailableOfferings()
+		subnetProvider := subnet.NewDefaultProvider(ec2api, cache.New(awscache.DefaultTTL, awscache.DefaultCleanupInterval), cache.New(awscache.AvailableIPAddressTTL, awscache.DefaultCleanupInterval), unavailableOfferingsCache)
 		celEnv := lo.Must(kubeletcel.NewEnvironment())
 		instanceTypeProvider := instancetype.NewDefaultProvider(
 			cache.New(awscache.InstanceTypesZonesAndOfferingsTTL, awscache.DefaultCleanupInterval),
@@ -147,7 +148,7 @@ below are the resources available with some assumptions and after the instance o
 			),
 			nil,
 			nil,
-			awscache.NewUnavailableOfferings(),
+			unavailableOfferingsCache,
 			instancetype.NewDefaultResolver(
 				region,
 				celEnv,
