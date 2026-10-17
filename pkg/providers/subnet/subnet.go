@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	v1 "github.com/aws/karpenter-provider-aws/pkg/apis/v1"
+	awscache "github.com/aws/karpenter-provider-aws/pkg/cache"
 	"github.com/aws/karpenter-provider-aws/pkg/utils"
 
 	karpv1 "sigs.k8s.io/karpenter/pkg/apis/v1"
@@ -54,6 +55,7 @@ type DefaultProvider struct {
 	ec2api                  sdk.EC2API
 	cache                   *cache.Cache
 	availableIPAddressCache *cache.Cache
+	unavailableOfferings    *awscache.UnavailableOfferings
 	cm                      *pretty.ChangeMonitor
 	inflightIPs             map[string]int32
 }
@@ -65,7 +67,7 @@ type Subnet struct {
 	AvailableIPAddressCount int32
 }
 
-func NewDefaultProvider(ec2api sdk.EC2API, cache *cache.Cache, availableIPAddressCache *cache.Cache) *DefaultProvider {
+func NewDefaultProvider(ec2api sdk.EC2API, cache *cache.Cache, availableIPAddressCache *cache.Cache, unavailableOfferings *awscache.UnavailableOfferings) *DefaultProvider {
 	return &DefaultProvider{
 		ec2api: ec2api,
 		cm:     pretty.NewChangeMonitor(),
@@ -73,6 +75,7 @@ func NewDefaultProvider(ec2api sdk.EC2API, cache *cache.Cache, availableIPAddres
 		// Subnets are sorted on AvailableIpAddressCount, descending order
 		cache:                   cache,
 		availableIPAddressCache: availableIPAddressCache,
+		unavailableOfferings:    unavailableOfferings,
 		// inflightIPs is used to track IPs from known launched instances
 		inflightIPs: map[string]int32{},
 	}
@@ -106,6 +109,9 @@ func (p *DefaultProvider) List(ctx context.Context, nodeClass *v1.EC2NodeClass) 
 			for i := range output.Subnets {
 				subnets[lo.FromPtr(output.Subnets[i].SubnetId)] = output.Subnets[i]
 				p.availableIPAddressCache.SetDefault(lo.FromPtr(output.Subnets[i].SubnetId), lo.FromPtr(output.Subnets[i].AvailableIpAddressCount))
+				if lo.FromPtr(output.Subnets[i].AvailableIpAddressCount) == 0 {
+					p.unavailableOfferings.MarkSubnetUnavailable(lo.FromPtr(output.Subnets[i].SubnetId))
+				}
 				// subnets can be leaked here, if a subnets is never called received from ec2
 				// we are accepting it for now, as this will be an insignificant amount of memory
 				delete(p.inflightIPs, lo.FromPtr(output.Subnets[i].SubnetId)) // remove any previously tracked IP addresses since we just refreshed from EC2

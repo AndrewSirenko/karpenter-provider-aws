@@ -161,8 +161,11 @@ func (u *UnavailableOfferings) MarkCapacityTypeUnavailable(capacityType string) 
 }
 
 func (u *UnavailableOfferings) MarkSubnetUnavailable(subnetID string) {
+	_, found := u.subnetCache.Get(subnetID)
 	u.subnetCache.SetDefault(subnetID, struct{}{})
-	u.subnetCacheSeqNum.Add(1)
+	if !found {
+		u.subnetCacheSeqNum.Add(1)
+	}
 }
 
 func (u *UnavailableOfferings) Delete(instanceType ec2types.InstanceType, zone string, capacityType string) {

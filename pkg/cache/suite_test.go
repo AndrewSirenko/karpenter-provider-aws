@@ -176,6 +176,9 @@ var _ = Describe("Cache", func() {
 			unavailableOfferingCache.MarkSubnetUnavailable("subnet-test2")
 			Expect(unavailableOfferingCache.SeqNum(ec2types.InstanceTypeM5Large)).To(BeNumerically("==", 3))
 			Expect(unavailableOfferingCache.SeqNum(ec2types.InstanceTypeM5Xlarge)).To(BeNumerically("==", 3))
+			unavailableOfferingCache.MarkSubnetUnavailable("subnet-test2")
+			Expect(unavailableOfferingCache.SeqNum(ec2types.InstanceTypeM5Large)).To(BeNumerically("==", 3))
+			Expect(unavailableOfferingCache.SeqNum(ec2types.InstanceTypeM5Xlarge)).To(BeNumerically("==", 3))
 
 			// marking on-demand capacity type as unavailable should increase the sequence number for all instance types
 			unavailableOfferingCache.MarkCapacityTypeUnavailable(karpv1.CapacityTypeOnDemand)
