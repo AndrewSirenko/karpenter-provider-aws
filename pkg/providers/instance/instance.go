@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 
 	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
@@ -69,6 +70,7 @@ const (
 )
 
 var (
+	subnetIDPattern     = regexp.MustCompile(`subnet-[0-9a-f]+`)
 	instanceStateFilter = ec2types.Filter{
 		Name: aws.String("instance-state-name"),
 		Values: []string{
@@ -629,7 +631,7 @@ func (p *DefaultProvider) updateUnavailableOfferingsCache(
 			karpentermetrics.ReasonLabel:       reason,
 		})
 
-		if subnet := lo.FromPtr(err.LaunchTemplateAndOverrides.Overrides.SubnetId); awserrors.IsInsufficientFreeAddressesInSubnet(err) && subnet != "" {
+		if subnet := exhaustedSubnetID(err); awserrors.IsInsufficientFreeAddressesInSubnet(err) && subnet != "" {
 			p.unavailableOfferings.MarkSubnetUnavailable(subnet)
 			// When a Subnet is ICEd we update the subnet provider's availableIPAddressCache to ensure
 			// this subnet is sorted last for future launches
@@ -863,6 +865,13 @@ func instancesFromOutput(ctx context.Context, out *ec2.DescribeInstancesOutput) 
 		inst := NewInstance(ctx, i)
 		return inst.ID, inst
 	}), nil
+}
+
+func exhaustedSubnetID(err ec2types.CreateFleetError) string {
+	if id := lo.FromPtr(err.LaunchTemplateAndOverrides.Overrides.SubnetId); id != "" {
+		return id
+	}
+	return subnetIDPattern.FindString(lo.FromPtr(err.ErrorMessage))
 }
 
 func combineFleetErrors(fleetErrs []ec2types.CreateFleetError) (errs error) {

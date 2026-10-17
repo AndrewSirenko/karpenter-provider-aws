@@ -834,6 +834,35 @@ var _ = Describe("InstanceProvider", func() {
 		Expect(cfCall.LaunchTemplateConfigs[0].Overrides).To(HaveLen(1))
 		Expect(lo.FromPtr(cfCall.LaunchTemplateConfigs[0].Overrides[0].SubnetId)).To(Equal("subnet-1a-1"))
 	})
+	It("should mark the subnet named in the error when the fleet override has no subnet", func() {
+		nodeClass.Status.Subnets = []v1.Subnet{
+			{ID: "subnet-0a1a1a1a1a1a1a1a1", Zone: "test-zone-1a", ZoneID: "use1-az1"},
+			{ID: "subnet-0b1b1b1b1b1b1b1b1", Zone: "test-zone-1b", ZoneID: "use1-az2"},
+		}
+		ExpectApplied(ctx, env.Client, nodeClaim, nodePool, nodeClass)
+		nodeClass = ExpectExists(ctx, env.Client, nodeClass)
+		awsEnv.EC2API.CreateFleetBehavior.Output.Set(&ec2.CreateFleetOutput{
+			Errors: []ec2types.CreateFleetError{
+				{
+					ErrorCode:    lo.ToPtr("InsufficientFreeAddressesInSubnet"),
+					ErrorMessage: lo.ToPtr("There are not enough free addresses in subnet 'subnet-0a1a1a1a1a1a1a1a1' to satisfy the requested number of instances."),
+					LaunchTemplateAndOverrides: &ec2types.LaunchTemplateAndOverridesResponse{
+						Overrides: &ec2types.FleetLaunchTemplateOverrides{
+							InstanceType:     "m5.xlarge",
+							AvailabilityZone: lo.ToPtr("test-zone-1a"),
+						},
+					},
+				},
+			},
+		})
+		instanceTypes, err := cloudProvider.GetInstanceTypes(ctx, nodePool)
+		Expect(err).ToNot(HaveOccurred())
+		instance, err := awsEnv.InstanceProvider.Create(ctx, nodeClass, nodeClaim, nil, instanceTypes)
+		Expect(corecloudprovider.IsInsufficientCapacityError(err)).To(BeTrue())
+		Expect(instance).To(BeNil())
+		Expect(awsEnv.UnavailableOfferingsCache.IsUnavailable(ec2types.InstanceTypeM5Large, "test-zone-1a", []string{"subnet-0a1a1a1a1a1a1a1a1"}, karpv1.CapacityTypeOnDemand)).To(BeTrue())
+		Expect(awsEnv.UnavailableOfferingsCache.IsUnavailable(ec2types.InstanceTypeM5Large, "test-zone-1b", []string{"subnet-0b1b1b1b1b1b1b1b1"}, karpv1.CapacityTypeOnDemand)).To(BeFalse())
+	})
 	It("should use priotiztied allocation stragaty for an on-demand nodeclaim using nodeoverlay pricing", func() {
 		nodeClaim.Annotations = map[string]string{v1alpha1.PriceOverlayAppliedAnnotationKey: "true"}
 		nodeClaim.Spec.Requirements = []karpv1.NodeSelectorRequirementWithMinValues{
