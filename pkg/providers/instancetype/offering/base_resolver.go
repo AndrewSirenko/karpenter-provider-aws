@@ -17,6 +17,7 @@ package offering
 import (
 	"context"
 	"fmt"
+	"hash/maphash"
 	"sync"
 
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
@@ -159,8 +160,10 @@ type capacityTypesKey struct {
 
 // cacheKeyBuilder pre-computes some cache key components to avoid redundant hashing.
 type cacheKeyBuilder struct {
-	baseSuffix          string                      // non-instance-type specific hashes
-	capacityTypesHashes map[capacityTypesKey]uint64 // capacity requirements -> hash
+	baseSuffix               string                      // non-instance-type specific hashes
+	capacityTypesHashes      map[capacityTypesKey]uint64 // capacity requirements -> hash
+	otherCapacityTypesHashes map[uint64]uint64           // capacity type set key -> hash, for other combinations
+	seed                     maphash.Seed
 }
 
 func newCacheKeyBuilder(nodeClass NodeClass, zoneInfo []v1.ZoneInfo, shiftedZones sets.Set[string], pg *placementgroup.PlacementGroup) *cacheKeyBuilder {
@@ -200,7 +203,9 @@ func newCacheKeyBuilder(nodeClass NodeClass, zoneInfo []v1.ZoneInfo, shiftedZone
 			nestedVirtualizationEnabledHash,
 			placementGroupHash,
 		),
-		capacityTypesHashes: make(map[capacityTypesKey]uint64, 4),
+		capacityTypesHashes:      make(map[capacityTypesKey]uint64, 4),
+		otherCapacityTypesHashes: map[uint64]uint64{},
+		seed:                     maphash.MakeSeed(),
 	}
 	for _, hasOnDemand := range []bool{false, true} {
 		for _, hasSpot := range []bool{false, true} {
@@ -235,12 +240,21 @@ func (b *cacheKeyBuilder) cacheKeyFromInstanceType(it *cloudprovider.InstanceTyp
 		capacityTypesHash = b.capacityTypesHashes[key]
 	} else {
 		// we try to use the pre-computed capacity types hash but fallback
-		// on unknown capacity type combinations (i.e. reserved)
-		capacityTypesHash, _ = hashstructure.Hash(
-			capacityTypes,
-			hashstructure.FormatV2,
-			&hashstructure.HashOptions{SlicesAsSets: true},
-		)
+		// on unknown capacity type combinations (i.e. reserved), hashing each combination once
+		var setKey uint64
+		for _, ct := range capacityTypes {
+			setKey ^= maphash.String(b.seed, ct)
+		}
+		hash, ok := b.otherCapacityTypesHashes[setKey]
+		if !ok {
+			hash, _ = hashstructure.Hash(
+				capacityTypes,
+				hashstructure.FormatV2,
+				&hashstructure.HashOptions{SlicesAsSets: true},
+			)
+			b.otherCapacityTypesHashes[setKey] = hash
+		}
+		capacityTypesHash = hash
 	}
 	return fmt.Sprintf("%s-%016x-%016x-%s", it.Name, zonesHash, capacityTypesHash, b.baseSuffix)
 }
