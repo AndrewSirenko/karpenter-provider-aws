@@ -113,7 +113,8 @@ spec:
                       owner:
                         description: |-
                           Owner is the owner for the ami.
-                          You can specify a combination of AWS account IDs, "self", "amazon", and "aws-marketplace"
+                          You can specify an AWS account ID, "self", "amazon", "aws-backup-vault", or "aws-marketplace".
+                          To select AMIs from more than one owner, use a separate term for each owner.
                         type: string
                       ssmParameter:
                         description: SSMParameter is the name (or ARN) of the SSM parameter containing the Image ID.

@@ -272,7 +272,8 @@ type AMISelectorTerm struct {
 	// +optional
 	Name string `json:"name,omitempty"`
 	// Owner is the owner for the ami.
-	// You can specify a combination of AWS account IDs, "self", "amazon", and "aws-marketplace"
+	// You can specify an AWS account ID, "self", "amazon", "aws-backup-vault", or "aws-marketplace".
+	// To select AMIs from more than one owner, use a separate term for each owner.
 	// +optional
 	Owner string `json:"owner,omitempty"`
 	//SSMParameter is the name (or ARN) of the SSM parameter containing the Image ID.
