@@ -15,15 +15,18 @@ limitations under the License.
 package compatibility_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/samber/lo"
 
 	v1 "github.com/aws/karpenter-provider-aws/pkg/apis/v1"
+	"github.com/aws/karpenter-provider-aws/pkg/fake"
 	"github.com/aws/karpenter-provider-aws/pkg/providers/instancetype/compatibility"
 	"github.com/aws/karpenter-provider-aws/pkg/providers/placementgroup"
 )
@@ -202,6 +205,18 @@ var _ = Describe("CompatibilityTest", func() {
 			Entry("nitro instance without connection tracking", ec2types.InstanceTypeHypervisor("nitro"),
 				nil, true),
 		)
+		It("should allow bare metal instances when ConnectionTracking is set", func() {
+			out, err := fake.NewEC2API().DescribeInstanceTypes(context.Background(), &ec2.DescribeInstanceTypesInput{})
+			Expect(err).ToNot(HaveOccurred())
+			info, ok := lo.Find(out.InstanceTypes, func(i ec2types.InstanceTypeInfo) bool {
+				return i.InstanceType == ec2types.InstanceTypeM5Metal
+			})
+			Expect(ok).To(BeTrue())
+			Expect(info.Hypervisor).To(BeEmpty())
+			nc := newMockNodeClass(v1.AMIFamilyAL2023, nil)
+			nc.connectionTracking = &v1.ConnectionTracking{TCPEstablishedTimeout: lo.ToPtr(int32(300))}
+			Expect(compatibility.IsCompatibleWithNodeClass(info, nc, nil)).To(BeTrue())
+		})
 	})
 })
 

@@ -207,5 +207,5 @@ func (c connectionTrackingCheck) compatibleCheck(info ec2types.InstanceTypeInfo)
 	if !c.hasConnectionTracking {
 		return true
 	}
-	return info.Hypervisor == "nitro"
+	return info.Hypervisor == ec2types.InstanceTypeHypervisorNitro || lo.FromPtr(info.BareMetal)
 }
