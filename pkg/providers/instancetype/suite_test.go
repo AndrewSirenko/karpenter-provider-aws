@@ -3244,6 +3244,38 @@ var _ = Describe("InstanceTypeProvider", func() {
 		Expect(ok).To(BeTrue())
 		Expect(m5InstanceType.Offerings.Available()).To(HaveLen(6))
 	})
+	It("should not serve stale zonal shift offerings when the first resolve hydrates the zonal shift cache", func() {
+		ExpectApplied(ctx, env.Client, nodeClass)
+		awsEnv.ARCZonalShiftAPI.GetManagedResourceBehavior.Output.Set(&arczonalshift.GetManagedResourceOutput{
+			ZonalShifts: []arczonalshifttypes.ZonalShiftInResource{
+				{
+					AwayFrom:      aws.String("tstz1-1a"),
+					ExpiryTime:    aws.Time(time.Now().Add(time.Hour)),
+					AppliedStatus: arczonalshifttypes.AppliedStatusApplied,
+				},
+			},
+		})
+
+		instanceTypes, err := cloudProvider.GetInstanceTypes(ctx, nodePool)
+		Expect(err).ToNot(HaveOccurred())
+		m5InstanceType, ok := lo.Find(instanceTypes, func(it *corecloudprovider.InstanceType) bool {
+			return it.Name == string(ec2types.InstanceTypeM5Large)
+		})
+		Expect(ok).To(BeTrue())
+		Expect(m5InstanceType.Offerings.Available()).To(HaveLen(4))
+
+		awsEnv.ARCZonalShiftAPI.GetManagedResourceBehavior.Output.Set(&arczonalshift.GetManagedResourceOutput{
+			ZonalShifts: []arczonalshifttypes.ZonalShiftInResource{},
+		})
+		Expect(awsEnv.ZonalShiftProvider.UpdateZonalShifts(ctx)).To(Succeed())
+		instanceTypes, err = cloudProvider.GetInstanceTypes(ctx, nodePool)
+		Expect(err).ToNot(HaveOccurred())
+		m5InstanceType, ok = lo.Find(instanceTypes, func(it *corecloudprovider.InstanceType) bool {
+			return it.Name == string(ec2types.InstanceTypeM5Large)
+		})
+		Expect(ok).To(BeTrue())
+		Expect(m5InstanceType.Offerings.Available()).To(HaveLen(6))
+	})
 	Context("Instance Type and NodeClass Compatibility", func() {
 		Context("AMI Compatibility", func() {
 			BeforeEach(func() {

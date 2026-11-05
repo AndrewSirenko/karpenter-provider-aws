@@ -29,8 +29,6 @@ import (
 	"sigs.k8s.io/karpenter/pkg/cloudprovider"
 	"sigs.k8s.io/karpenter/pkg/scheduling"
 
-	arczonalshiftProvider "github.com/aws/karpenter-provider-aws/pkg/providers/arczonalshift"
-
 	v1 "github.com/aws/karpenter-provider-aws/pkg/apis/v1"
 	awscache "github.com/aws/karpenter-provider-aws/pkg/cache"
 	"github.com/aws/karpenter-provider-aws/pkg/providers/instancetype/compatibility"
@@ -46,7 +44,6 @@ type BaseResolver struct {
 	UnavailableOfferings           *awscache.UnavailableOfferings
 	LastUnavailableOfferingsSeqNum *sync.Map // instance type -> seqNum
 	Cache                          *cache.Cache
-	ZonalshiftProvider             arczonalshiftProvider.Provider
 	GetOverlayPrice                func(ctx context.Context, instanceTypeName string) (float64, bool)
 }
 
@@ -94,7 +91,7 @@ func (r *BaseResolver) ResolveOfferings(
 			})
 			if zonefound {
 				subnetIDs = zonalInfo.SubnetIDs
-				isZonalShifted = r.ZonalshiftProvider.IsZonalShifted(ctx, zonalInfo.ZoneID)
+				isZonalShifted = shiftedZones.Has(zonalInfo.ZoneID)
 			}
 			for _, capacityType := range it.Requirements.Get(karpv1.CapacityTypeLabelKey).Values() {
 				// Reserved capacity types are constructed separately

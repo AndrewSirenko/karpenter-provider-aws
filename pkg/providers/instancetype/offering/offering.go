@@ -113,14 +113,12 @@ func NewDefaultProvider(
 			UnavailableOfferings:           unavailableOfferingsCache,
 			LastUnavailableOfferingsSeqNum: &p.lastUnavailableOfferingsSeqNum,
 			Cache:                          offeringCache,
-			ZonalshiftProvider:             zonalshiftProvider,
 			GetOverlayPrice:                p.GetOverlayPrice,
 		},
 		&ReservedCapacityResolver{
 			PricingProvider:             pricingProvider,
 			CapacityReservationProvider: capacityReservationProvider,
 			UnavailableOfferings:        unavailableOfferingsCache,
-			ZonalshiftProvider:          zonalshiftProvider,
 		},
 		&PlacementGroupResolver{},
 	}
@@ -147,7 +145,7 @@ func (p *DefaultProvider) InjectOfferings(
 		pg, _ = p.placementGroupProvider.Get(ctx, nodeClass)
 	}
 	var its []*cloudprovider.InstanceType
-	shiftedZones := p.zonalshiftProvider.ShiftedZones()
+	shiftedZones := p.zonalshiftProvider.ShiftedZones(ctx)
 
 	zoneInfo := nodeClass.ZoneInfo()
 	rc := &ResolveContext{

@@ -27,8 +27,6 @@ import (
 	"sigs.k8s.io/karpenter/pkg/operator/options"
 	"sigs.k8s.io/karpenter/pkg/scheduling"
 
-	arczonalshiftProvider "github.com/aws/karpenter-provider-aws/pkg/providers/arczonalshift"
-
 	v1 "github.com/aws/karpenter-provider-aws/pkg/apis/v1"
 	awscache "github.com/aws/karpenter-provider-aws/pkg/cache"
 	"github.com/aws/karpenter-provider-aws/pkg/providers/capacityreservation"
@@ -44,7 +42,6 @@ type ReservedCapacityResolver struct {
 	PricingProvider             pricing.Provider
 	CapacityReservationProvider capacityreservation.Provider
 	UnavailableOfferings        *awscache.UnavailableOfferings
-	ZonalshiftProvider          arczonalshiftProvider.Provider
 }
 
 func (r *ReservedCapacityResolver) ResolveOfferings(
@@ -85,7 +82,7 @@ func (r *ReservedCapacityResolver) ResolveOfferings(
 			return i.Zone == reservation.AvailabilityZone
 		})
 		if zoneFound {
-			isZonalShifted = r.ZonalshiftProvider.IsZonalShifted(ctx, zonalInfo.ZoneID)
+			isZonalShifted = shiftedZones.Has(zonalInfo.ZoneID)
 		}
 		reservationCapacity := r.CapacityReservationProvider.GetAvailableInstanceCount(reservation.ID)
 		offering := &cloudprovider.Offering{

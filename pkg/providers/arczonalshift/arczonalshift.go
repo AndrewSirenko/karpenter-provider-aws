@@ -33,7 +33,7 @@ import (
 type Provider interface {
 	IsZonalShifted(context.Context, string) bool
 	UpdateZonalShifts(context.Context) error
-	ShiftedZones() sets.Set[string]
+	ShiftedZones(context.Context) sets.Set[string]
 }
 
 type DefaultProvider struct {
@@ -94,6 +94,7 @@ func (p *DefaultProvider) Reset() {
 	p.Lock()
 	defer p.Unlock()
 	p.zonalShiftStatuses = make(map[string]shiftStatus)
+	p.hydrated.Store(false)
 }
 
 func (p *DefaultProvider) ensureHydrated(ctx context.Context) {
@@ -123,7 +124,9 @@ func (p *DefaultProvider) IsZonalShifted(ctx context.Context, zoneId string) boo
 	return false
 }
 
-func (p *DefaultProvider) ShiftedZones() sets.Set[string] {
+func (p *DefaultProvider) ShiftedZones(ctx context.Context) sets.Set[string] {
+	p.ensureHydrated(ctx)
+
 	p.RLock()
 	defer p.RUnlock()
 	shifted := sets.New[string]()
