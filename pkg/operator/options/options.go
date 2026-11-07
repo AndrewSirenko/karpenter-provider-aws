@@ -42,6 +42,8 @@ type FeatureGates struct {
 	DRANVIDIAGPU    bool
 	DRAEFA          bool
 	RebootForRepair bool
+
+	SubnetHeadroomWeighting bool
 }
 
 type Options struct {
@@ -75,7 +77,7 @@ func (o *Options) AddFlags(fs *coreoptions.FlagSet) {
 	fs.DurationVar(&o.AMIRefreshInterval, "ami-refresh-interval", env.WithDefaultDuration("AMI_REFRESH_INTERVAL", time.Minute), "How often Karpenter refreshes AMI data from EC2. Increasing this value will reduce the number of DescribeImages API calls at the cost of increased staleness in AMI discovery and drift detection. Must be at least 1m.")
 	fs.DurationVar(&o.SubnetRefreshInterval, "subnet-refresh-interval", env.WithDefaultDuration("SUBNET_REFRESH_INTERVAL", time.Minute), "How often Karpenter refreshes subnet data from EC2. Increasing this value will reduce the number of DescribeSubnets API calls at the cost of increased staleness in subnet discovery. Must be at least 1m.")
 	fs.DurationVar(&o.SecurityGroupRefreshInterval, "security-group-refresh-interval", env.WithDefaultDuration("SECURITY_GROUP_REFRESH_INTERVAL", time.Minute), "How often Karpenter refreshes security group data from EC2. Increasing this value will reduce the number of DescribeSecurityGroups API calls at the cost of increased staleness in security group discovery. Must be at least 1m.")
-	fs.StringVar(&o.FeatureGates.inputStr, "aws-feature-gates", env.WithDefaultString("AWS_FEATURE_GATES", "NodeClassCEL=false,DRANVIDIAGPU=false,DRAEFA=false,RebootForRepair=false"), "Optional AWS-specific features can be enabled / disabled using feature gates. Current options are: NodeClassCEL, DRANVIDIAGPU, DRAEFA, RebootForRepair.")
+	fs.StringVar(&o.FeatureGates.inputStr, "aws-feature-gates", env.WithDefaultString("AWS_FEATURE_GATES", "NodeClassCEL=false,DRANVIDIAGPU=false,DRAEFA=false,RebootForRepair=false,SubnetHeadroomWeighting=false"), "Optional AWS-specific features can be enabled / disabled using feature gates. Current options are: NodeClassCEL, DRANVIDIAGPU, DRAEFA, RebootForRepair, SubnetHeadroomWeighting.")
 }
 
 func (o *Options) Parse(fs *coreoptions.FlagSet, args ...string) error {
@@ -102,6 +104,8 @@ func DefaultFeatureGates() FeatureGates {
 		DRANVIDIAGPU:    false,
 		DRAEFA:          false,
 		RebootForRepair: false,
+
+		SubnetHeadroomWeighting: false,
 	}
 }
 
@@ -125,6 +129,9 @@ func ParseFeatureGates(gateStr string) (FeatureGates, error) {
 	}
 	if val, ok := gateMap["RebootForRepair"]; ok {
 		gates.RebootForRepair = val
+	}
+	if val, ok := gateMap["SubnetHeadroomWeighting"]; ok {
+		gates.SubnetHeadroomWeighting = val
 	}
 
 	return gates, nil

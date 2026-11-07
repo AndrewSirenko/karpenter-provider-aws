@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"sort"
 
 	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
@@ -115,6 +116,7 @@ type DefaultProvider struct {
 	instanceCache               *cache.Cache
 	allocationStrategyProvider  AllocationStrategyProvider
 	efaProvider                 efa.Provider
+	headroomDraw                func() float64
 }
 
 type DefaultProviderOpts = option.Function[DefaultProvider]
@@ -162,6 +164,7 @@ func NewDefaultProvider(
 		placementGroupProvider:      placementGroupProvider,
 		zonalshiftProvider:          zonalshiftProvider,
 		instanceCache:               instanceCache,
+		headroomDraw:                rand.Float64,
 		allocationStrategyProvider:  DefaultAllocationStrategyProvider{},
 		efaProvider:                 efa.DefaultProvider{},
 	}
@@ -554,6 +557,13 @@ func (p *DefaultProvider) getLaunchTemplateConfigs(
 	}
 	if len(launchTemplateConfigs) == 0 {
 		return nil, fmt.Errorf("no capacity offerings are currently available given the constraints")
+	}
+	if karpopts.FromContext(ctx).FeatureGates.SubnetHeadroomWeighting && p.headroomDraw != nil {
+		var dropped int
+		launchTemplateConfigs, dropped = weightOverridesByHeadroom(launchTemplateConfigs, zonalSubnets, instanceTypes, p.headroomDraw)
+		if dropped > 0 {
+			log.FromContext(ctx).V(1).WithValues("dropped-overrides", dropped).Info("dropped launch overrides in subnets with little IP headroom")
+		}
 	}
 	return launchTemplateConfigs, nil
 }

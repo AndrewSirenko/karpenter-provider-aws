@@ -148,6 +148,12 @@ var _ = Describe("Options", func() {
 			Expect(opts.FeatureGates.DRANVIDIAGPU).To(BeFalse())
 			Expect(opts.FeatureGates.DRAEFA).To(BeFalse())
 			Expect(opts.FeatureGates.RebootForRepair).To(BeFalse())
+			Expect(opts.FeatureGates.SubnetHeadroomWeighting).To(BeFalse())
+		})
+		It("should enable SubnetHeadroomWeighting from the CLI flag", func() {
+			err := opts.Parse(fs, "--cluster-name", "test-cluster", "--aws-feature-gates", "SubnetHeadroomWeighting=true")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(opts.FeatureGates.SubnetHeadroomWeighting).To(BeTrue())
 		})
 		It("should enable RebootForRepair from the CLI flag", func() {
 			err := opts.Parse(fs, "--cluster-name", "test-cluster", "--aws-feature-gates", "RebootForRepair=true")
