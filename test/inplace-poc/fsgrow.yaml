@@ -1,0 +1,47 @@
+# Node-side half of size growth. Karpenter grows the EBS volume with ModifyVolume; this grows the root partition
+# and filesystem to match, on the host, once the block device is bigger than the partition. Prototype for AL2023
+# (xfs root on /dev/nvme0n1p1). In EKS Auto Mode this belongs in the node agent, not a customer DaemonSet.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: volume-rightsizer-fsgrow
+  namespace: kube-system
+  labels: {app: volume-rightsizer-fsgrow}
+spec:
+  selector:
+    matchLabels: {app: volume-rightsizer-fsgrow}
+  template:
+    metadata:
+      labels: {app: volume-rightsizer-fsgrow}
+    spec:
+      hostPID: true
+      nodeSelector: {poc: inplace}
+      tolerations:
+        - operator: Exists
+      priorityClassName: system-node-critical
+      containers:
+        - name: fsgrow
+          image: public.ecr.aws/docker/library/busybox:1.36
+          securityContext: {privileged: true}
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+          command:
+            - nsenter
+            - -t
+            - "1"
+            - -m
+            - --
+            - /bin/sh
+            - -c
+            - |
+              while true; do
+                src=$(findmnt -no SOURCE /)
+                disk=/dev/$(lsblk -no PKNAME "$src")
+                part=$(cat /sys/class/block/$(basename "$src")/partition)
+                dsize=$(blockdev --getsize64 "$disk"); psize=$(blockdev --getsize64 "$src")
+                if [ $((dsize - psize)) -gt 1073741824 ]; then
+                  echo "$(date -u +%FT%TZ) $disk is $((dsize >> 30))GiB, $src is $((psize >> 30))GiB, growing"
+                  growpart "$disk" "$part" && xfs_growfs / && echo "$(date -u +%FT%TZ) grown: $(df -h / | tail -1)"
+                fi
+                sleep 15
+              done

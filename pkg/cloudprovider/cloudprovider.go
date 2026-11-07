@@ -79,6 +79,7 @@ type CloudProvider struct {
 	legacyRepairPolicies        bool
 	rebootForRepair             bool
 	caBundle                    *string
+	volumeAPI                   VolumeAPI
 }
 
 func New(
