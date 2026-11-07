@@ -628,7 +628,6 @@ func (p *DefaultProvider) getOverrides(
 	return overrides
 }
 
-//nolint:gocyclo
 func (p *DefaultProvider) updateUnavailableOfferingsCache(
 	ctx context.Context,
 	errs []ec2types.CreateFleetError,
@@ -658,6 +657,7 @@ func (p *DefaultProvider) updateUnavailableOfferingsCache(
 		})
 
 		if subnet := lo.FromPtr(err.LaunchTemplateAndOverrides.Overrides.SubnetId); awserrors.IsInsufficientFreeAddressesInSubnet(err) && subnet != "" {
+			log.FromContext(ctx).WithValues("subnet-id", subnet, "zone", zone, "ttl", awscache.UnavailableOfferingsTTL).Info("marking subnet unavailable, it has no free IP addresses")
 			p.unavailableOfferings.MarkSubnetUnavailable(subnet)
 			// When a Subnet is ICEd we update the subnet provider's availableIPAddressCache to ensure
 			// this subnet is sorted last for future launches

@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sigs.k8s.io/karpenter/pkg/events"
 	"sync"
 
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -156,6 +157,11 @@ func NewDefaultProvider(
 			additionalResolvers...,
 		),
 	}
+	return p
+}
+
+func (p *DefaultProvider) WithEventRecorder(r events.Recorder) *DefaultProvider {
+	p.offeringProvider.SetEventRecorder(r)
 	return p
 }
 

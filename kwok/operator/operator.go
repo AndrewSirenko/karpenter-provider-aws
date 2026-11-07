@@ -220,7 +220,7 @@ func NewOperator(ctx context.Context, operator *operator.Operator) (context.Cont
 		zsProvider,
 		nil,
 		celEnv,
-	)
+	).WithEventRecorder(operator.EventRecorder)
 	// Ensure we're able to hydrate instance types before starting any reliant controllers.
 	// Instance type updates are hydrated asynchronously after this by controllers.
 	lo.Must0(instanceTypeProvider.UpdateInstanceTypes(ctx))

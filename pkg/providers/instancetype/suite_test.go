@@ -2516,6 +2516,59 @@ var _ = Describe("InstanceTypeProvider", func() {
 			Expect(zones).To(HaveLen(2))
 			Expect(zones.UnsortedList()).To(ConsistOf([]string{"test-zone-1b", "test-zone-1c"}))
 		})
+		Context("SubnetsExhausted", func() {
+			BeforeEach(func() { awsEnv.EventRecorder.Reset() })
+			availableZones := func(its []*corecloudprovider.InstanceType) sets.Set[string] {
+				zones := sets.New[string]()
+				for _, it := range its {
+					for _, of := range it.Offerings.Available() {
+						zones.Insert(of.Zone())
+					}
+				}
+				return zones
+			}
+			It("should publish a SubnetsExhausted event when every subnet in a zone is out of IPs", func() {
+				ExpectApplied(ctx, env.Client, nodeClass)
+				awsEnv.UnavailableOfferingsCache.MarkSubnetUnavailable("subnet-test1")
+				_, err := cloudProvider.GetInstanceTypes(ctx, nodePool)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(awsEnv.EventRecorder.Calls("SubnetsExhausted")).To(Equal(1))
+				Expect(awsEnv.EventRecorder.DetectedEvent("All subnets in zone test-zone-1a (subnet-test1) are out of free IP addresses, so Karpenter won't launch nodes in this zone for at least 3m0s. Add IP space to these subnets or allow other zones.")).To(BeTrue())
+			})
+			It("should dedupe the event per NodeClass and zone for the length of a mark", func() {
+				ExpectApplied(ctx, env.Client, nodeClass)
+				awsEnv.UnavailableOfferingsCache.MarkSubnetUnavailable("subnet-test1")
+				_, err := cloudProvider.GetInstanceTypes(ctx, nodePool)
+				Expect(err).ToNot(HaveOccurred())
+				evts := lo.Filter(awsEnv.EventRecorder.Events(), func(e events.Event, _ int) bool { return e.Reason == "SubnetsExhausted" })
+				Expect(evts).ToNot(BeEmpty())
+				Expect(evts[0].DedupeValues).To(Equal([]string{string(nodeClass.UID), "test-zone-1a"}))
+				Expect(evts[0].DedupeTimeout).To(Equal(awscache.UnavailableOfferingsTTL))
+			})
+			It("should not publish while another subnet in the zone still has IPs", func() {
+				nodeClass.Status.Subnets = append(nodeClass.Status.Subnets, v1.Subnet{ID: "subnet-test5", Zone: "test-zone-1a", ZoneID: "tstz1-1a"})
+				ExpectApplied(ctx, env.Client, nodeClass)
+				awsEnv.UnavailableOfferingsCache.MarkSubnetUnavailable("subnet-test1")
+				its, err := awsEnv.InstanceTypesProvider.List(ctx, nodeClass)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(availableZones(its)).To(HaveKey("test-zone-1a"))
+				Expect(awsEnv.EventRecorder.Calls("SubnetsExhausted")).To(Equal(0))
+			})
+			It("should keep offering a full zone when ZoneInfo has no SubnetIDs, and ValidateZoneInfo should flag it", func() {
+				ExpectApplied(ctx, env.Client, nodeClass)
+				legacy := &perSubnetZoneInfoNodeClass{EC2NodeClass: nodeClass}
+				Expect(offering.ValidateZoneInfo(legacy.ZoneInfo())).To(MatchError(ContainSubstring("has no SubnetIDs")))
+				awsEnv.UnavailableOfferingsCache.MarkSubnetUnavailable("subnet-test1")
+				its, err := awsEnv.InstanceTypesProvider.List(ctx, legacy)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(availableZones(its)).To(HaveKey("test-zone-1a"))
+				Expect(awsEnv.EventRecorder.Calls("SubnetsExhausted")).To(Equal(0))
+
+				its, err = awsEnv.InstanceTypesProvider.List(ctx, nodeClass)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(availableZones(its)).ToNot(HaveKey("test-zone-1a"))
+			})
+		})
 	})
 	Context("CapacityType", func() {
 		It("should default to on-demand", func() {
@@ -4265,4 +4318,14 @@ type countingResolver struct {
 func (r *countingResolver) Resolve(ctx context.Context, info ec2types.InstanceTypeInfo, zones []string, nodeClass instancetype.NodeClass, parsedKubelet *v1.ParsedKubeletConfig) (*corecloudprovider.InstanceType, error) {
 	r.calls.Add(1)
 	return r.Resolver.Resolve(ctx, info, zones, nodeClass, parsedKubelet)
+}
+
+type perSubnetZoneInfoNodeClass struct {
+	*v1.EC2NodeClass
+}
+
+func (n *perSubnetZoneInfoNodeClass) ZoneInfo() []v1.ZoneInfo {
+	return lo.Map(n.Status.Subnets, func(s v1.Subnet, _ int) v1.ZoneInfo {
+		return v1.ZoneInfo{Zone: s.Zone, ZoneID: s.ZoneID}
+	})
 }

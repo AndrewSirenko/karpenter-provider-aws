@@ -17,6 +17,7 @@ package offering
 import (
 	"context"
 	"fmt"
+	"sigs.k8s.io/karpenter/pkg/events"
 	"strconv"
 	"sync"
 	"time"
@@ -85,6 +86,8 @@ type DefaultProvider struct {
 	overlayPricesMu                sync.RWMutex
 	overlayPricesExpiry            time.Time
 	resolvers                      []OfferingResolver
+	zoneInfoWarnings               sync.Map
+	recorder                       events.Recorder
 }
 
 func NewDefaultProvider(
@@ -150,6 +153,8 @@ func (p *DefaultProvider) InjectOfferings(
 	shiftedZones := p.zonalshiftProvider.ShiftedZones()
 
 	zoneInfo := nodeClass.ZoneInfo()
+	p.warnOnInvalidZoneInfo(ctx, nodeClass, zoneInfo)
+	p.publishSubnetsExhausted(nodeClass, zoneInfo)
 	rc := &ResolveContext{
 		ZoneInfo:        zoneInfo,
 		cacheKeyBuilder: newCacheKeyBuilder(nodeClass, zoneInfo, shiftedZones, pg),
@@ -253,4 +258,29 @@ func (p *DefaultProvider) ResetOverlayPrices() {
 	defer p.overlayPricesMu.Unlock()
 	p.overlayPrices = nil
 	p.overlayPricesExpiry = time.Time{}
+}
+
+func (p *DefaultProvider) warnOnInvalidZoneInfo(ctx context.Context, nodeClass NodeClass, zoneInfo []v1.ZoneInfo) {
+	err := ValidateZoneInfo(zoneInfo)
+	if err == nil {
+		return
+	}
+	key := fmt.Sprintf("%s/%d", nodeClass.GetUID(), nodeClass.GetGeneration())
+	if _, seen := p.zoneInfoWarnings.LoadOrStore(key, struct{}{}); seen {
+		return
+	}
+	log.FromContext(ctx).WithValues("nodeclass", nodeClass.GetName()).Error(err, "NodeClass ZoneInfo breaks the offering contract, subnets that run out of IP addresses won't make their zone unavailable")
+}
+
+func (p *DefaultProvider) SetEventRecorder(r events.Recorder) { p.recorder = r }
+
+func (p *DefaultProvider) publishSubnetsExhausted(nodeClass NodeClass, zoneInfo []v1.ZoneInfo) {
+	if p.recorder == nil {
+		return
+	}
+	for _, zi := range zoneInfo {
+		if p.unavailableOfferings.AllSubnetsUnavailable(zi.SubnetIDs) {
+			p.recorder.Publish(SubnetsExhaustedEvent(nodeClass, zi.Zone, zi.SubnetIDs))
+		}
+	}
 }
