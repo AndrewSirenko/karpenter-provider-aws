@@ -49,6 +49,7 @@ func main() {
 		op.CABundle,
 		cloudprovider.WithLegacyRepairPolicies(karpoptions.FromContext(ctx).LegacyNodeRepair),
 		cloudprovider.WithRebootForRepair(options.FromContext(ctx).FeatureGates.RebootForRepair),
+		cloudprovider.WithVolumeAPI(op.EC2API),
 	)
 	overlayUndecoratedCloudProvider := metrics.Decorate(awsCloudProvider)
 	cloudProvider := overlay.Decorate(overlayUndecoratedCloudProvider, op.GetClient(), op.InstanceTypeStore)

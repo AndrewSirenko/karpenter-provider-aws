@@ -124,3 +124,7 @@ func GenerateDefaultPriceOutput() (*ec2.DescribeSpotPriceHistoryOutput, *pricing
 	}
 	return &ec2.DescribeSpotPriceHistoryOutput{SpotPriceHistory: spotPriceHistory}, &pricing.GetProductsOutput{PriceList: priceList}
 }
+
+func (c *CloudProvider) Update(context.Context, *karpv1.NodeClaim, string) (bool, error) {
+	return false, corecloudprovider.NewNodeUpdateNotImplementedError()
+}
