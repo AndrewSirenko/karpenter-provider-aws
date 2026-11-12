@@ -195,6 +195,10 @@ spec:
             - name: DISABLE_CLUSTER_STATE_OBSERVABILITY
               value: "{{ tpl (toString .) $ }}"
           {{- end }}
+          {{- with .Values.settings.disableHighCardinalityMetrics }}
+            - name: DISABLE_HIGH_CARDINALITY_METRICS
+              value: "{{ join "," . }}"
+          {{- end }}
           {{- with .Values.settings.disableDryRun }}
             - name: DISABLE_DRY_RUN
               value: "{{ tpl (toString .) $ }}"

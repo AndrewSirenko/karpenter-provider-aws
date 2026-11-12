@@ -16,10 +16,12 @@ package metrics_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/awslabs/operatorpkg/object"
+	prometheusmodel "github.com/prometheus/client_model/go"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"sigs.k8s.io/karpenter/pkg/test/v1alpha1"
 
@@ -30,6 +32,7 @@ import (
 	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/record"
+	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 	karpv1 "sigs.k8s.io/karpenter/pkg/apis/v1"
 	"sigs.k8s.io/karpenter/pkg/events"
 	coreoptions "sigs.k8s.io/karpenter/pkg/operator/options"
@@ -628,6 +631,40 @@ var _ = Describe("MetricsController", func() {
 					Expect(of.CapacityType()).ToNot(Equal(karpv1.CapacityTypeReserved))
 				}
 			}
+		})
+	})
+	Context("InstanceTypeOfferings High Cardinality Metric", func() {
+		offeringSeries := func() int {
+			families, err := crmetrics.Registry.Gather()
+			Expect(err).ToNot(HaveOccurred())
+			return lo.SumBy(families, func(mf *prometheusmodel.MetricFamily) int {
+				return lo.Ternary(lo.Contains(options.InstanceTypeOfferingsHighCardinalityMetric.Metrics, mf.GetName()), len(mf.GetMetric()), 0)
+			})
+		}
+		BeforeEach(func() {
+			metrics.InstanceTypeOfferingAvailable.Reset()
+			metrics.InstanceTypeOfferingPriceEstimate.Reset()
+			ExpectApplied(ctx, env.Client, nodePool, nodeClass)
+		})
+		It("should list every metric it changes", func() {
+			Expect(options.InstanceTypeOfferingsHighCardinalityMetric.Metrics).To(ConsistOf(
+				ExpectMetricName(metrics.InstanceTypeOfferingAvailable),
+				ExpectMetricName(metrics.InstanceTypeOfferingPriceEstimate),
+			))
+		})
+		It("should emit the offering metrics by default", func() {
+			ExpectSingletonReconciled(ctx, controller)
+			n := offeringSeries()
+			fmt.Fprintf(GinkgoWriter, "offering series with InstanceTypeOfferings emitted: %d\n", n)
+			Expect(n).To(BeNumerically(">", 0))
+		})
+		It("should not emit the offering metrics when InstanceTypeOfferings is disabled", func() {
+			coreoptions.SetDisabledHighCardinalityMetrics([]string{options.InstanceTypeOfferingsHighCardinalityMetric.Name})
+			DeferCleanup(coreoptions.SetDisabledHighCardinalityMetrics, []string(nil))
+			ExpectSingletonReconciled(ctx, controller)
+			n := offeringSeries()
+			fmt.Fprintf(GinkgoWriter, "offering series with InstanceTypeOfferings disabled: %d\n", n)
+			Expect(n).To(BeZero())
 		})
 	})
 })

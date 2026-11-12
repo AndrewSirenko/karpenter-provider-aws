@@ -406,7 +406,7 @@ Node allocatable are the resources allocatable by nodes.
 ## Pods Metrics
 
 ### `karpenter_pods_unstarted_time_seconds`
-The time from pod creation until the pod is running.
+The time from pod creation until the pod is running. Not emitted when PodName is in --disable-high-cardinality-metrics.
 - Type: [Gauge](https://prometheus.io/docs/concepts/metric_types/#gauge)
 - Stability Level: ALPHA
 - Dimensions:
@@ -414,7 +414,7 @@ The time from pod creation until the pod is running.
   - `namespace` — The namespace of the pod.
 
 ### `karpenter_pods_unbound_time_seconds`
-The time from pod creation until the pod is bound.
+The time from pod creation until the pod is bound. Not emitted when PodName is in --disable-high-cardinality-metrics.
 - Type: [Gauge](https://prometheus.io/docs/concepts/metric_types/#gauge)
 - Stability Level: ALPHA
 - Dimensions:
@@ -425,7 +425,7 @@ The time from pod creation until the pod is bound.
     - `false`
 
 ### `karpenter_pods_state`
-Pod state is the current state of pods. This metric can be used several ways as it is labeled by the pod name, namespace, owner, node, whether the pod is scheduled, nodepool name, zone, architecture, capacity type, instance type, pod phase, pod readiness, and whether the node is Karpenter-managed.
+Pod state is the number of pods in each state. This metric can be used several ways as it is labeled by the pod name, namespace, owner, node, whether the pod is scheduled, nodepool name, zone, architecture, capacity type, instance type, pod phase, pod readiness, and whether the node is Karpenter-managed. The pod name is empty, and the value counts the pods sharing the other labels, when PodName is in --disable-high-cardinality-metrics.
 - Type: [Gauge](https://prometheus.io/docs/concepts/metric_types/#gauge)
 - Stability Level: BETA
 - Dimensions:
@@ -466,7 +466,7 @@ The time it takes for Karpenter to first try to schedule a pod after it's been s
 - Stability Level: ALPHA
 
 ### `karpenter_pods_provisioning_unstarted_time_seconds`
-The time from when Karpenter first thinks the pod can schedule until the pod is running. Note: this calculated from a point in memory, not by the pod creation timestamp.
+The time from when Karpenter first thinks the pod can schedule until the pod is running. Note: this calculated from a point in memory, not by the pod creation timestamp. Not emitted when PodName is in --disable-high-cardinality-metrics.
 - Type: [Gauge](https://prometheus.io/docs/concepts/metric_types/#gauge)
 - Stability Level: ALPHA
 - Dimensions:
@@ -474,7 +474,7 @@ The time from when Karpenter first thinks the pod can schedule until the pod is 
   - `namespace` — The namespace of the pod.
 
 ### `karpenter_pods_provisioning_unbound_time_seconds`
-The time from when Karpenter first thinks the pod can schedule until it binds. Note: this calculated from a point in memory, not by the pod creation timestamp.
+The time from when Karpenter first thinks the pod can schedule until it binds. Note: this calculated from a point in memory, not by the pod creation timestamp. Not emitted when PodName is in --disable-high-cardinality-metrics.
 - Type: [Gauge](https://prometheus.io/docs/concepts/metric_types/#gauge)
 - Stability Level: ALPHA
 - Dimensions:
@@ -490,7 +490,7 @@ The time from when Karpenter first thinks the pod can schedule until the pod is 
 - Stability Level: ALPHA
 
 ### `karpenter_pods_provisioning_scheduling_undecided_time_seconds`
-The time from when Karpenter has seen a pod without making a scheduling decision for the pod. Note: this calculated from a point in memory, not by the pod creation timestamp.
+The time from when Karpenter has seen a pod without making a scheduling decision for the pod. Note: this calculated from a point in memory, not by the pod creation timestamp. Not emitted when PodName is in --disable-high-cardinality-metrics.
 - Type: [Gauge](https://prometheus.io/docs/concepts/metric_types/#gauge)
 - Stability Level: ALPHA
 - Dimensions:
@@ -971,7 +971,7 @@ Current count of nodes in cluster state
 ## Cloudprovider Metrics
 
 ### `karpenter_cloudprovider_instance_type_offering_price_estimate`
-Instance type offering estimated hourly price used when making informed decisions on node cost calculation, based on instance type, capacity type, and zone.
+Instance type offering estimated hourly price used when making informed decisions on node cost calculation, based on instance type, capacity type, and zone. Not emitted when InstanceTypeOfferings is in --disable-high-cardinality-metrics.
 - Type: [Gauge](https://prometheus.io/docs/concepts/metric_types/#gauge)
 - Stability Level: BETA
 - Dimensions:
@@ -983,7 +983,7 @@ Instance type offering estimated hourly price used when making informed decision
   - `zone` — The availability zone of the instance.
 
 ### `karpenter_cloudprovider_instance_type_offering_available`
-Instance type offering availability, based on instance type, capacity type, and zone
+Instance type offering availability, based on instance type, capacity type, and zone. Not emitted when InstanceTypeOfferings is in --disable-high-cardinality-metrics.
 - Type: [Gauge](https://prometheus.io/docs/concepts/metric_types/#gauge)
 - Stability Level: BETA
 - Dimensions:

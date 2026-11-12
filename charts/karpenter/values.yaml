@@ -227,6 +227,9 @@ settings:
   legacyNodeRepair: false
   # -- Disable cluster state metrics and events.
   disableClusterStateObservability: false
+  # -- High cardinality metrics to stop emitting, e.g. [PodName, InstanceTypeOfferings]. ALPHA. Empty emits every metric.
+  # See https://karpenter.sh/docs/reference/settings/#high-cardinality-metrics for what each one changes.
+  disableHighCardinalityMetrics: []
   # -- Disable dry run validation for EC2NodeClasses.
   disableDryRun: false
   # -- How often Karpenter refreshes AMI data from EC2. Increasing this value will reduce the number of

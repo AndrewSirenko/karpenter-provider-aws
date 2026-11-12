@@ -23,6 +23,7 @@ Karpenter surfaces environment variables and CLI parameters to allow you to conf
 | DISABLE_CLUSTER_STATE_OBSERVABILITY | \-\-disable-cluster-state-observability | Disable cluster state metrics and events|
 | DISABLE_CONTROLLER_WARMUP | \-\-disable-controller-warmup | Disable controller warmup which starts controller sources before leader election is won. Controller warmup pre-populates caches and improves leader failover time.|
 | DISABLE_DRY_RUN | \-\-disable-dry-run | If true, then disable dry run validation for EC2NodeClasses.|
+| DISABLE_HIGH_CARDINALITY_METRICS | \-\-disable-high-cardinality-metrics | Comma-separated high cardinality metrics to stop emitting. Empty emits everything. Current options are: PodName, InstanceTypeOfferings.|
 | DISABLE_LEADER_ELECTION | \-\-disable-leader-election | Disable the leader election client before executing the main loop. Disable when running replicated components for high availability is not desired.|
 | EKS_CONTROL_PLANE | \-\-eks-control-plane | Marking this true means that your cluster is running with an EKS control plane and Karpenter should attempt to discover cluster details from the DescribeCluster API |
 | ENABLE_PROFILING | \-\-enable-profiling | Enable the profiling on the metric endpoint|
@@ -115,6 +116,21 @@ Some features are specific to the AWS provider and are configured separately fro
 `DRANVIDIAGPU` and `DRAEFA` make Karpenter calculate the DRA devices the NVIDIA GPU driver (`gpu.nvidia.com`) and the dranet driver's EFA interfaces (`dra.net`) publish, respectively, so that pods with ResourceClaims for those drivers are accounted for when it sizes new nodes. Each gate is independent of the other, and of the core `--ignore-dra-requests` option: both a driver's gate and `--ignore-dra-requests=false` are needed for Karpenter to contribute that driver's devices. When installing with the Helm chart, set `settings.enableDRA` to enable both gates and set `IGNORE_DRA_REQUESTS=false`. To enable the gates individually, leave `settings.enableDRA` unset and set `settings.awsFeatureGates.draNVIDIAGPU` or `settings.awsFeatureGates.draEFA`. Enabling either one also sets `IGNORE_DRA_REQUESTS=false`, regardless of `settings.ignoreDRARequests`. The chart fails to render if `settings.enableDRA` is combined with `settings.awsFeatureGates.draNVIDIAGPU`, `settings.awsFeatureGates.draEFA`, or `settings.ignoreDRARequests`. With a driver's gate disabled, its claims are only satisfied by devices the driver publishes on nodes that already exist.
 
 `RebootForRepair` makes [Node Auto Repair]({{<ref "../concepts/disruption#node-auto-repair" >}}) reboot a node in place for reboot-clearable GPU faults instead of replacing it. It has no effect without the `NodeRepair` feature gate. When it's disabled, those faults are replaced on the same toleration and termination grace period. Enabling it requires the `ec2:RebootInstances` permission on the controller role.
+
+### High Cardinality Metrics
+
+Some metrics grow with the size of the cluster, such as one series per pod or one series per instance type offering. Karpenter emits all of them by default. To stop emitting some of them, list their names in the `--disable-high-cardinality-metrics` CLI flag or the `DISABLE_HIGH_CARDINALITY_METRICS` environment variable (Helm: `settings.disableHighCardinalityMetrics`). For example: `--disable-high-cardinality-metrics PodName,InstanceTypeOfferings`. Unknown names fail startup. This setting is ALPHA.
+
+Disabling an entry only changes what Karpenter exposes on its metrics endpoint. Karpenter makes the same scheduling and disruption decisions either way. If you only want to drop metrics from storage, `metric_relabel_configs` or `serviceMonitor.metricRelabelings` also work, but Karpenter still holds every series in memory and serves it on every scrape.
+
+[comment]: <> (the content below is generated from hack/docs/configuration_gen/main.go high cardinality metrics)
+
+| Name | Stage | Metrics | When disabled | Cardinality |
+|--|--|--|--|--|
+| PodName | Alpha | `karpenter_pods_state`<br>`karpenter_pods_unstarted_time_seconds`<br>`karpenter_pods_unbound_time_seconds`<br>`karpenter_pods_provisioning_unstarted_time_seconds`<br>`karpenter_pods_provisioning_unbound_time_seconds`<br>`karpenter_pods_provisioning_scheduling_undecided_time_seconds` | karpenter_pods_state sets the pod name dimension to empty and counts the pods that share each remaining label set. The per-pod karpenter_pods_*_time_seconds gauges are not emitted. The pod duration histograms are unchanged. | One series per pod. 20,273 karpenter_pods_* series at 20k pods, 491 with PodName turned off. |
+| InstanceTypeOfferings | Alpha | `karpenter_cloudprovider_instance_type_offering_available`<br>`karpenter_cloudprovider_instance_type_offering_price_estimate` | The instance type offering availability and price estimate gauges are not emitted. Karpenter still uses offering availability and prices to launch nodes. | One series per instance type, capacity type, and zone in any NodePool. About 29k each with ~800 instance types, 6 zones, and 3 capacity types, before scrape-time labels multiply it. |
+
+[comment]: <> (end docs generated content from hack/docs/configuration_gen/main.go high cardinality metrics)
 
 ### Batching Parameters
 
