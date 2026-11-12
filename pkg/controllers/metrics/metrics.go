@@ -20,6 +20,7 @@ import (
 	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/karpenter/pkg/metrics"
 
+	"github.com/aws/karpenter-provider-aws/pkg/operator/options"
 	"github.com/aws/karpenter-provider-aws/pkg/providers/instancetype"
 )
 
@@ -33,34 +34,40 @@ const (
 )
 
 var (
-	InstanceTypeOfferingAvailable = opmetrics.NewPrometheusGauge(
-		crmetrics.Registry,
-		prometheus.GaugeOpts{
-			Namespace: metrics.Namespace,
-			Subsystem: cloudProviderSubsystem,
-			Name:      "instance_type_offering_available",
-			Help:      "Instance type offering availability, based on instance type, capacity type, and zone",
-		},
-		[]opmetrics.Label{
-			instancetype.InstanceType,
-			metrics.CapacityType,
-			metrics.Zone,
-		},
-		opmetrics.Beta,
+	InstanceTypeOfferingAvailable = metrics.NewHighCardinalityGauge(
+		options.InstanceTypeOfferingsHighCardinalityMetric,
+		opmetrics.NewPrometheusGauge(
+			crmetrics.Registry,
+			prometheus.GaugeOpts{
+				Namespace: metrics.Namespace,
+				Subsystem: cloudProviderSubsystem,
+				Name:      "instance_type_offering_available",
+				Help:      "Instance type offering availability, based on instance type, capacity type, and zone. Not emitted when InstanceTypeOfferings is in --disable-high-cardinality-metrics.",
+			},
+			[]opmetrics.Label{
+				instancetype.InstanceType,
+				metrics.CapacityType,
+				metrics.Zone,
+			},
+			opmetrics.Beta,
+		),
 	)
-	InstanceTypeOfferingPriceEstimate = opmetrics.NewPrometheusGauge(
-		crmetrics.Registry,
-		prometheus.GaugeOpts{
-			Namespace: metrics.Namespace,
-			Subsystem: cloudProviderSubsystem,
-			Name:      "instance_type_offering_price_estimate",
-			Help:      "Instance type offering estimated hourly price used when making informed decisions on node cost calculation, based on instance type, capacity type, and zone.",
-		},
-		[]opmetrics.Label{
-			instancetype.InstanceType,
-			metrics.CapacityType,
-			metrics.Zone,
-		},
-		opmetrics.Beta,
+	InstanceTypeOfferingPriceEstimate = metrics.NewHighCardinalityGauge(
+		options.InstanceTypeOfferingsHighCardinalityMetric,
+		opmetrics.NewPrometheusGauge(
+			crmetrics.Registry,
+			prometheus.GaugeOpts{
+				Namespace: metrics.Namespace,
+				Subsystem: cloudProviderSubsystem,
+				Name:      "instance_type_offering_price_estimate",
+				Help:      "Instance type offering estimated hourly price used when making informed decisions on node cost calculation, based on instance type, capacity type, and zone. Not emitted when InstanceTypeOfferings is in --disable-high-cardinality-metrics.",
+			},
+			[]opmetrics.Label{
+				instancetype.InstanceType,
+				metrics.CapacityType,
+				metrics.Zone,
+			},
+			opmetrics.Beta,
+		),
 	)
 )

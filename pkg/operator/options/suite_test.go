@@ -199,6 +199,37 @@ var _ = Describe("Options", func() {
 		})
 	})
 
+	Context("HighCardinalityMetrics", func() {
+		var coreOpts *coreoptions.Options
+		BeforeEach(func() {
+			coreOpts = &coreoptions.Options{}
+			coreOpts.AddFlags(fs)
+		})
+		AfterEach(func() {
+			coreoptions.SetDisabledHighCardinalityMetrics(nil)
+		})
+		It("should register the AWS entries with core", func() {
+			Expect(coreoptions.KarpenterHighCardinalityMetrics).To(ContainElements(options.AWSHighCardinalityMetrics))
+		})
+		It("should disable InstanceTypeOfferings through the core option", func() {
+			Expect(coreOpts.Parse(fs, "--disable-high-cardinality-metrics", "PodName,InstanceTypeOfferings")).To(Succeed())
+			Expect(coreoptions.HighCardinalityMetricDisabled(options.InstanceTypeOfferingsHighCardinalityMetric)).To(BeTrue())
+			Expect(coreoptions.HighCardinalityMetricDisabled(coreoptions.PodNameHighCardinalityMetric)).To(BeTrue())
+		})
+		It("should emit InstanceTypeOfferings by default", func() {
+			Expect(coreOpts.Parse(fs)).To(Succeed())
+			Expect(coreoptions.HighCardinalityMetricDisabled(options.InstanceTypeOfferingsHighCardinalityMetric)).To(BeFalse())
+		})
+		It("should document every AWS entry", func() {
+			for _, m := range options.AWSHighCardinalityMetrics {
+				Expect(m.Name).ToNot(BeEmpty())
+				Expect(m.Metrics).ToNot(BeEmpty(), m.Name)
+				Expect(m.Help).ToNot(BeEmpty(), m.Name)
+				Expect(m.Cardinality).ToNot(BeEmpty(), m.Name)
+			}
+		})
+	})
+
 	Context("Validation", func() {
 		BeforeEach(func() {
 			opts.AddFlags(fs)

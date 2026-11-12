@@ -22,6 +22,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/awslabs/operatorpkg/docs"
 	cliflag "k8s.io/component-base/cli/flag"
 	coreoptions "sigs.k8s.io/karpenter/pkg/operator/options"
 	"sigs.k8s.io/karpenter/pkg/utils/env"
@@ -31,6 +32,25 @@ import (
 
 func init() {
 	coreoptions.Injectables = append(coreoptions.Injectables, &Options{})
+	coreoptions.KarpenterHighCardinalityMetrics = append(coreoptions.KarpenterHighCardinalityMetrics, AWSHighCardinalityMetrics...)
+}
+
+var InstanceTypeOfferingsHighCardinalityMetric = coreoptions.HighCardinalityMetric{
+	Name: "InstanceTypeOfferings",
+	Metrics: []string{
+		"karpenter_cloudprovider_instance_type_offering_available",
+		"karpenter_cloudprovider_instance_type_offering_price_estimate",
+	},
+	Help: "The instance type offering availability and price estimate gauges are not emitted. Karpenter still uses " +
+		"offering availability and prices to launch nodes.",
+	Cardinality: "One series per instance type, capacity type, and zone in any NodePool. About 29k each with ~800 instance " +
+		"types, 6 zones, and 3 capacity types, before scrape-time labels multiply it.",
+	Stage: docs.Alpha,
+}
+
+// AWSHighCardinalityMetrics are the AWS entries --disable-high-cardinality-metrics accepts, in addition to the core ones.
+var AWSHighCardinalityMetrics = []coreoptions.HighCardinalityMetric{
+	InstanceTypeOfferingsHighCardinalityMetric,
 }
 
 type optionsKey struct{}
