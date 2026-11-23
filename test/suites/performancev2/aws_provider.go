@@ -100,6 +100,13 @@ func AWS(c env.Clients) *perf.Provider {
 		Capture:      []string{"aws_sdk_go_"},
 		ReproEnv:     []string{"CLUSTER_NAME", "KARPENTER_NAMESPACE"},
 		Levels:       Levels(),
+		Catalog: perf.Catalog{
+			Arches:       []string{karpv1.ArchitectureAmd64, karpv1.ArchitectureArm64},
+			SizeKey:      v1.LabelInstanceCPU,
+			SizeCeilings: []string{"8", "16", "32"},
+			FamilyKey:    v1.LabelInstanceCategory,
+			Families:     []string{"c", "m"},
+		},
 	}
 	sink, err := timestreamSinkFromEnv(context.Background(), append(append([]perf.Metric(nil), perf.Metrics...), p.Metrics...))
 	if err != nil {
