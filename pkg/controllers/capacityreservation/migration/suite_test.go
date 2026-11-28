@@ -282,6 +282,35 @@ var _ = Describe("Capacity Reservation Migration Controller", func() {
 	})
 
 	Context("On-demand nodes", func() {
+		inflightNodeClaim := func(ids ...string) *karpv1.NodeClaim {
+			return coretest.NodeClaim(karpv1.NodeClaim{
+				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{karpv1.NodePoolLabelKey: nodePool.Name}},
+				Spec: karpv1.NodeClaimSpec{
+					NodeClassRef: &karpv1.NodeClassReference{Group: object.GVK(nodeClass).Group, Kind: object.GVK(nodeClass).Kind, Name: nodeClass.Name},
+					Requirements: []karpv1.NodeSelectorRequirementWithMinValues{
+						{Key: karpv1.CapacityTypeLabelKey, Operator: corev1.NodeSelectorOpIn, Values: []string{karpv1.CapacityTypeReserved}},
+						{Key: corecloudprovider.ReservationIDLabel, Operator: corev1.NodeSelectorOpIn, Values: ids},
+					},
+				},
+			})
+		}
+		It("should not take a slot an unlaunched reserved NodeClaim was scheduled into", func() {
+			cr := reservation("cr-1", 1)
+			setReservations([]ec2types.CapacityReservation{cr}, cr)
+			ExpectApplied(ctx, env.Client, inflightNodeClaim("cr-1"))
+			makeNode()
+			ExpectSingletonReconciled(ctx, controller)
+			Expect(modifyCalls()).To(Equal(0))
+		})
+		It("should use the slots left over after unlaunched reserved NodeClaims", func() {
+			cr := reservation("cr-1", 2)
+			setReservations([]ec2types.CapacityReservation{cr}, cr)
+			ExpectApplied(ctx, env.Client, inflightNodeClaim("cr-1"))
+			makeNode()
+			makeNode()
+			ExpectSingletonReconciled(ctx, controller)
+			Expect(modifyCalls()).To(Equal(1))
+		})
 		It("should re-target, wait for coverage, then relabel the NodeClaim and Node reserved", func() {
 			cr := reservation("cr-1", 2)
 			setReservations([]ec2types.CapacityReservation{cr}, cr)

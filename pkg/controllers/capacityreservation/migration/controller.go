@@ -126,8 +126,12 @@ type pass struct {
 	raw         map[string]map[string]*ec2types.CapacityReservation // nodeclass name -> reservation id -> reservation
 	active      map[string]bool
 	pending     map[string]sets.Set[string]
-	ineligible  map[string]int
-	stalled     int
+	// inflight counts reserved NodeClaims the scheduler placed in a reservation that haven't launched yet. Their slots
+	// aren't debited from the provider count until CreateFleet returns, so migration must not take them. It isn't
+	// published to the shared ledger: the launch path skips reservations whose count is zero, so it would block itself.
+	inflight   map[string]int
+	ineligible map[string]int
+	stalled    int
 }
 
 type candidate struct {
@@ -156,6 +160,7 @@ func (c *Controller) Reconcile(ctx context.Context) (reconciler.Result, error) {
 		raw:         map[string]map[string]*ec2types.CapacityReservation{},
 		active:      map[string]bool{},
 		pending:     map[string]sets.Set[string]{},
+		inflight:    map[string]int{},
 		ineligible:  map[string]int{},
 	}
 	c.prune(byID)
@@ -165,6 +170,7 @@ func (c *Controller) Reconcile(ctx context.Context) (reconciler.Result, error) {
 	for _, nc := range nodeClaims {
 		id, err := utils.ParseInstanceID(nc.Status.ProviderID)
 		if err != nil {
+			p.holdInflight(nc)
 			continue
 		}
 		inst, ok := byID[id]
@@ -562,7 +568,9 @@ func (c *Controller) migrate(ctx context.Context, p *pass, candidates []*candida
 			break
 		}
 		// The ledger-adjusted count already excludes slots claimed earlier in this pass.
-		budgets := lo.SliceToMap(cand.reservations, func(id string) (string, int) { return id, c.crProvider.GetAvailableInstanceCount(id) })
+		budgets := lo.SliceToMap(cand.reservations, func(id string) (string, int) {
+			return id, c.crProvider.GetAvailableInstanceCount(id) - p.inflight[id]
+		})
 		reservations := lo.Filter(cand.reservations, func(id string, _ int) bool { return budgets[id] > 0 })
 		if len(reservations) == 0 {
 			p.ineligible[reasonNoCapacity]++
@@ -647,6 +655,19 @@ func ambiguous(err error) bool {
 		return true
 	}
 	return serverErrorCodes.Has(apiErr.ErrorCode())
+}
+
+// holdInflight reserves a slot in every reservation an unlaunched NodeClaim may launch into, matching how the core
+// scheduler debits each candidate reservation for a NodeClaim. Deleting NodeClaims still count: their CreateFleet call
+// may be in flight.
+func (p *pass) holdInflight(nc *karpv1.NodeClaim) {
+	reqs := scheduling.NewNodeSelectorRequirementsWithMinValues(nc.Spec.Requirements...)
+	if !reqs.Has(cloudprovider.ReservationIDLabel) {
+		return
+	}
+	for _, id := range reqs.Get(cloudprovider.ReservationIDLabel).Values() {
+		p.inflight[id]++
+	}
 }
 
 func (p *pass) hold(target, instanceID string) {
