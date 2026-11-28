@@ -70,6 +70,11 @@ const (
 	minRemainingLifetime = time.Hour
 )
 
+// MigrationTaint keeps new pods off a node while its reservation is being changed, so a pod that rejects the target
+// reservation can't land between the compatibility check and the Modify call. Kube-scheduler caches can lag, so the
+// relabel step still re-checks pods.
+var MigrationTaint = corev1.Taint{Key: v1.TaintKeyCapacityReservationMigration, Effect: corev1.TaintEffectNoSchedule}
+
 // serverErrorCodes are EC2 faults after which a Modify may still have been applied.
 var serverErrorCodes = sets.New("InternalError", "InternalFailure", "ServiceUnavailable", "Unavailable", "RequestTimeout", "RequestExpired")
 
@@ -248,6 +253,10 @@ func (c *Controller) reconcileTracked(ctx context.Context, p *pass, nc *karpv1.N
 	state := inst.CapacityReservationState
 	target, tracked := nc.Annotations[v1.AnnotationCapacityReservationMigrationTarget]
 	if !tracked {
+		// A crash between untainting and clearing the target can leave a taint behind.
+		if err := c.setMigrationTaint(ctx, nc, false); err != nil {
+			return false, err
+		}
 		// Adopt an instance re-targeted but not yet recorded, e.g. a Modify that timed out client-side but succeeded.
 		if nc.Labels[karpv1.CapacityTypeLabelKey] != karpv1.CapacityTypeOnDemand || state.TargetID == "" {
 			return true, nil
@@ -380,6 +389,7 @@ func (c *Controller) complete(ctx context.Context, p *pass, nc *karpv1.NodeClaim
 		}
 		stored := node.DeepCopy()
 		node.Labels = lo.Assign(node.Labels, labels)
+		node.Spec.Taints = lo.Reject(node.Spec.Taints, func(t corev1.Taint, _ int) bool { return t.MatchTaint(&MigrationTaint) })
 		if err := c.kubeClient.Patch(ctx, node, client.MergeFrom(stored)); client.IgnoreNotFound(err) != nil {
 			return fmt.Errorf("patching node, %w", err)
 		}
@@ -605,6 +615,15 @@ func (c *Controller) migrate(ctx context.Context, p *pass, candidates []*candida
 			errs = append(errs, client.IgnoreNotFound(err))
 			continue
 		}
+		if err := c.setMigrationTaint(ctx, nc, true); err != nil {
+			errs = append(errs, err, c.clearTarget(ctx, nc))
+			continue
+		}
+		// Pods that landed between the eligibility check and the taint still block the move.
+		if ids, _, err := c.filterCompatible(ctx, p, nc, []*corev1.Node{cand.node}, []string{target}); err != nil || len(ids) == 0 {
+			errs = append(errs, err, c.clearTarget(ctx, nc))
+			continue
+		}
 		calls++
 		err := c.instanceProvider.ModifyCapacityReservationTarget(ctx, inst.ID, target)
 		if err == nil {
@@ -730,11 +749,38 @@ func (c *Controller) setTarget(ctx context.Context, nc *karpv1.NodeClaim, target
 }
 
 func (c *Controller) clearTarget(ctx context.Context, nc *karpv1.NodeClaim) error {
+	if err := c.setMigrationTaint(ctx, nc, false); err != nil {
+		return err
+	}
 	stored := nc.DeepCopy()
 	delete(nc.Annotations, v1.AnnotationCapacityReservationMigrationTarget)
 	delete(nc.Annotations, v1.AnnotationCapacityReservationMigrationRequestedAt)
 	if err := c.kubeClient.Patch(ctx, nc, client.MergeFrom(stored)); client.IgnoreNotFound(err) != nil {
 		return fmt.Errorf("removing nodeclaim annotations, %w", err)
+	}
+	return nil
+}
+
+// setMigrationTaint adds or removes MigrationTaint on the NodeClaim's Nodes, patching only Nodes that change.
+func (c *Controller) setMigrationTaint(ctx context.Context, nc *karpv1.NodeClaim, on bool) error {
+	nodes, err := nodeclaimutils.AllNodesForNodeClaim(ctx, c.kubeClient, nc)
+	if err != nil {
+		return err
+	}
+	for _, node := range nodes {
+		has := lo.ContainsBy(node.Spec.Taints, func(t corev1.Taint) bool { return t.MatchTaint(&MigrationTaint) })
+		if has == on {
+			continue
+		}
+		stored := node.DeepCopy()
+		if on {
+			node.Spec.Taints = append(node.Spec.Taints, MigrationTaint)
+		} else {
+			node.Spec.Taints = lo.Reject(node.Spec.Taints, func(t corev1.Taint, _ int) bool { return t.MatchTaint(&MigrationTaint) })
+		}
+		if err := c.kubeClient.Patch(ctx, node, client.MergeFromWithOptions(stored, client.MergeFromWithOptimisticLock{})); client.IgnoreNotFound(err) != nil {
+			return fmt.Errorf("patching node taints, %w", err)
+		}
 	}
 	return nil
 }

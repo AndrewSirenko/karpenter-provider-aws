@@ -184,6 +184,7 @@ var (
 	AnnotationInstanceProfile                = apis.Group + "/instance-profile-name"
 	AnnotationNVIDIAConsumableCapacity       = apis.Group + "/nvidia-consumable-capacity"
 
+	TaintKeyCapacityReservationMigration              = apis.Group + "/capacity-reservation-migration"
 	AnnotationCapacityReservationMigrationTarget      = apis.Group + "/capacity-reservation-migration-target"
 	AnnotationCapacityReservationMigrationRequestedAt = apis.Group + "/capacity-reservation-migration-requested-at"
 
