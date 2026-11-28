@@ -65,6 +65,9 @@ const (
 	unauthorizedLogInterval = 10 * time.Minute
 	// DescribeInstances can lag a Modify, so a missing target isn't trusted until this long after the call.
 	modifyVisibilityGrace = 5 * time.Minute
+	// minRemainingLifetime skips reservations about to end. EC2 ends a reservation up to an hour after its end date,
+	// and a move into one that ends soon only flips the node's labels twice.
+	minRemainingLifetime = time.Hour
 )
 
 // serverErrorCodes are EC2 faults after which a Modify may still have been applied.
@@ -130,6 +133,7 @@ type pass struct {
 	// aren't debited from the provider count until CreateFleet returns, so migration must not take them. It isn't
 	// published to the shared ledger: the launch path skips reservations whose count is zero, so it would block itself.
 	inflight   map[string]int
+	endTimes   map[string]*time.Time // reservation id -> end time, nil if it doesn't end
 	ineligible map[string]int
 	stalled    int
 }
@@ -161,6 +165,7 @@ func (c *Controller) Reconcile(ctx context.Context) (reconciler.Result, error) {
 		active:      map[string]bool{},
 		pending:     map[string]sets.Set[string]{},
 		inflight:    map[string]int{},
+		endTimes:    map[string]*time.Time{},
 		ineligible:  map[string]int{},
 	}
 	c.prune(byID)
@@ -548,6 +553,13 @@ func (c *Controller) compatibleReservations(ctx context.Context, p *pass, nodeCl
 			cr.InstanceType != string(inst.Type) || cr.AvailabilityZone != inst.Zone || cr.ID == source {
 			return "", false
 		}
+		if cr.EndTime != nil && cr.EndTime.Time.Before(c.clk.Now().Add(minRemainingLifetime)) {
+			return "", false
+		}
+		p.endTimes[cr.ID] = nil
+		if cr.EndTime != nil {
+			p.endTimes[cr.ID] = lo.ToPtr(cr.EndTime.Time)
+		}
 		r, ok := raw[cr.ID]
 		// EC2 doesn't validate placement group or Outpost on Modify, so such a target might never cover the instance.
 		if !ok || r.State != ec2types.CapacityReservationStateActive || r.PlacementGroupArn != nil || r.OutpostArn != nil ||
@@ -577,6 +589,10 @@ func (c *Controller) migrate(ctx context.Context, p *pass, candidates []*candida
 			continue
 		}
 		sort.SliceStable(reservations, func(i, j int) bool {
+			// Prefer the reservation that lasts longest, so the node isn't orphaned again soon.
+			if ei, ej := p.endTimes[reservations[i]], p.endTimes[reservations[j]]; !lo.FromPtr(ei).Equal(lo.FromPtr(ej)) {
+				return ei == nil || (ej != nil && ei.After(*ej))
+			}
 			if budgets[reservations[i]] != budgets[reservations[j]] {
 				return budgets[reservations[i]] > budgets[reservations[j]]
 			}

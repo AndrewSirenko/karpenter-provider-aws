@@ -519,6 +519,30 @@ var _ = Describe("Capacity Reservation Migration Controller", func() {
 			ExpectSingletonReconciled(ctx, controller)
 			Expect(*awsEnv.EC2API.ModifyInstanceCapacityReservationAttributesBehavior.CalledWithInput.Pop().CapacityReservationSpecification.CapacityReservationTarget.CapacityReservationId).To(Equal("cr-b"))
 		})
+		It("should skip a reservation that ends within an hour", func() {
+			soon := reservation("cr-soon", 3)
+			setReservations([]ec2types.CapacityReservation{soon}, soon)
+			nodeClass.Status.CapacityReservations[0].EndTime = lo.ToPtr(metav1.NewTime(awsEnv.Clock.Now().Add(30 * time.Minute)))
+			ExpectApplied(ctx, env.Client, nodeClass)
+			makeNode()
+			ExpectSingletonReconciled(ctx, controller)
+			Expect(modifyCalls()).To(Equal(0))
+		})
+		It("should prefer a reservation without an end date, then the one that ends last", func() {
+			early, late, never := reservation("cr-early", 5), reservation("cr-late", 1), reservation("cr-never", 1)
+			setReservations([]ec2types.CapacityReservation{early, late, never}, early, late, never)
+			nodeClass.Status.CapacityReservations[0].EndTime = lo.ToPtr(metav1.NewTime(awsEnv.Clock.Now().Add(2 * time.Hour)))
+			nodeClass.Status.CapacityReservations[1].EndTime = lo.ToPtr(metav1.NewTime(awsEnv.Clock.Now().Add(48 * time.Hour)))
+			ExpectApplied(ctx, env.Client, nodeClass)
+			makeNode()
+			makeNode()
+			ExpectSingletonReconciled(ctx, controller)
+			targets := []string{}
+			for range 2 {
+				targets = append(targets, *awsEnv.EC2API.ModifyInstanceCapacityReservationAttributesBehavior.CalledWithInput.Pop().CapacityReservationSpecification.CapacityReservationTarget.CapacityReservationId)
+			}
+			Expect(targets).To(ConsistOf("cr-never", "cr-late"))
+		})
 		It("should only use reservations in the EC2NodeClass status", func() {
 			inStatus, notInStatus := reservation("cr-1", 0), reservation("cr-2", 5)
 			setReservations([]ec2types.CapacityReservation{inStatus, notInStatus}, inStatus)
