@@ -51,10 +51,12 @@ func RegisterTests() bool {
 			// reservation only becomes eligible once the test tags it.
 			selectorTag = fmt.Sprintf("odcr-migration-%s", uuid.NewString()[:8])
 			NodeClass.Spec.CapacityReservationSelectorTerms = []v1.CapacityReservationSelectorTerm{{Tags: map[string]string{"karpenter-e2e-selector": selectorTag}}}
-			NodePool.Spec.Template.Spec.Requirements = []karpv1.NodeSelectorRequirementWithMinValues{
-				{Key: karpv1.CapacityTypeLabelKey, Operator: corev1.NodeSelectorOpIn, Values: []string{karpv1.CapacityTypeOnDemand, karpv1.CapacityTypeReserved}},
-				{Key: corev1.LabelOSStable, Operator: corev1.NodeSelectorOpIn, Values: []string{string(corev1.Linux)}},
-			}
+			NodePool.Spec.Template.Spec.Requirements = append(lo.Reject(NodePool.Spec.Template.Spec.Requirements, func(r karpv1.NodeSelectorRequirementWithMinValues, _ int) bool {
+				return r.Key == karpv1.CapacityTypeLabelKey || r.Key == corev1.LabelOSStable
+			}),
+				karpv1.NodeSelectorRequirementWithMinValues{Key: karpv1.CapacityTypeLabelKey, Operator: corev1.NodeSelectorOpIn, Values: []string{karpv1.CapacityTypeOnDemand, karpv1.CapacityTypeReserved}},
+				karpv1.NodeSelectorRequirementWithMinValues{Key: corev1.LabelOSStable, Operator: corev1.NodeSelectorOpIn, Values: []string{string(corev1.Linux)}},
+			)
 			reservations = nil
 		})
 		AfterEach(func() {
@@ -173,10 +175,12 @@ func RegisterTests() bool {
 var _ = Describe("Open capacity reservation matching", func() {
 	It("should launch on-demand nodes with EC2's default open matching when the EC2NodeClass selects no reservations", func() {
 		NodeClass.Spec.CapacityReservationSelectorTerms = nil
-		NodePool.Spec.Template.Spec.Requirements = []karpv1.NodeSelectorRequirementWithMinValues{
-			{Key: karpv1.CapacityTypeLabelKey, Operator: corev1.NodeSelectorOpIn, Values: []string{karpv1.CapacityTypeOnDemand}},
-			{Key: corev1.LabelOSStable, Operator: corev1.NodeSelectorOpIn, Values: []string{string(corev1.Linux)}},
-		}
+		NodePool.Spec.Template.Spec.Requirements = append(lo.Reject(NodePool.Spec.Template.Spec.Requirements, func(r karpv1.NodeSelectorRequirementWithMinValues, _ int) bool {
+			return r.Key == karpv1.CapacityTypeLabelKey || r.Key == corev1.LabelOSStable
+		}),
+			karpv1.NodeSelectorRequirementWithMinValues{Key: karpv1.CapacityTypeLabelKey, Operator: corev1.NodeSelectorOpIn, Values: []string{karpv1.CapacityTypeOnDemand}},
+			karpv1.NodeSelectorRequirementWithMinValues{Key: corev1.LabelOSStable, Operator: corev1.NodeSelectorOpIn, Values: []string{string(corev1.Linux)}},
+		)
 		pod := coretest.Pod()
 		Env.ExpectCreated(NodePool, NodeClass, pod)
 		Env.EventuallyExpectHealthy(pod)
