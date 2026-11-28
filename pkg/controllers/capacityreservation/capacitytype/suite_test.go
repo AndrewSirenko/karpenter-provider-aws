@@ -107,10 +107,11 @@ var _ = Describe("Capacity Reservation Capacity Type Controller", func() {
 		nodeClaim = coretest.NodeClaim(karpv1.NodeClaim{
 			ObjectMeta: metav1.ObjectMeta{
 				Labels: map[string]string{
-					karpv1.CapacityTypeLabelKey:          karpv1.CapacityTypeReserved,
-					corecloudprovider.ReservationIDLabel: reservationID,
-					v1.LabelCapacityReservationType:      string(v1.CapacityReservationTypeDefault),
-					karpv1.NodeRegisteredLabelKey:        "true",
+					karpv1.CapacityTypeLabelKey:              karpv1.CapacityTypeReserved,
+					corecloudprovider.ReservationIDLabel:     reservationID,
+					v1.LabelCapacityReservationType:          string(v1.CapacityReservationTypeDefault),
+					v1.LabelCapacityReservationInterruptible: "false",
+					karpv1.NodeRegisteredLabelKey:            "true",
 				},
 			},
 			Status: karpv1.NodeClaimStatus{
@@ -148,6 +149,8 @@ var _ = Describe("Capacity Reservation Capacity Type Controller", func() {
 		Expect(node.Labels).To(HaveKeyWithValue(karpv1.CapacityTypeLabelKey, karpv1.CapacityTypeOnDemand))
 		Expect(node.Labels).ToNot(HaveKey(corecloudprovider.ReservationIDLabel))
 		Expect(node.Labels).ToNot(HaveKey(v1.LabelCapacityReservationType))
+		Expect(node.Labels).ToNot(HaveKey(v1.LabelCapacityReservationInterruptible))
+		Expect(nodeClaim.Labels).ToNot(HaveKey(v1.LabelCapacityReservationInterruptible))
 	})
 	It("should demote nodes from reserved to on-demand even if their nodeclaim was demoted previously", func() {
 		out := awsEnv.EC2API.DescribeInstancesBehavior.Output.Clone()
