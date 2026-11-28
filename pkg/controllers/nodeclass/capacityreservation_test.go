@@ -351,6 +351,29 @@ var _ = Describe("NodeClass Capacity Reservation Reconciler", func() {
 		Expect(cr.ReservationType).To(Equal(v1.CapacityReservationTypeCapacityBlock))
 		Expect(cr.State).To(Equal(v1.CapacityReservationStateExpiring))
 	})
+	DescribeTable("should mark UltraServer capacity blocks as expiring 70 minutes prior to their endDate",
+		func(untilEnd time.Duration, expected v1.CapacityReservationState) {
+			out := awsEnv.EC2API.DescribeCapacityReservationsOutput.Clone()
+			for i := range out.CapacityReservations {
+				if out.CapacityReservations[i].ReservationType != ec2types.CapacityReservationTypeCapacityBlock {
+					continue
+				}
+				out.CapacityReservations[i].EndDate = lo.ToPtr(awsEnv.Clock.Now().Add(untilEnd))
+				out.CapacityReservations[i].CapacityBlockId = lo.ToPtr("cb-0123456789abcdef0")
+			}
+			awsEnv.EC2API.DescribeCapacityReservationsOutput.Set(out)
+			nodeClass.Spec.CapacityReservationSelectorTerms = append(nodeClass.Spec.CapacityReservationSelectorTerms, v1.CapacityReservationSelectorTerm{
+				Tags: capacityBlockTags,
+			})
+			ExpectApplied(ctx, env.Client, nodeClass)
+			ExpectObjectReconciled(ctx, env.Client, controller, nodeClass)
+			nodeClass = ExpectExists(ctx, env.Client, nodeClass)
+			Expect(nodeClass.Status.CapacityReservations).To(HaveLen(1))
+			Expect(nodeClass.Status.CapacityReservations[0].State).To(Equal(expected))
+		},
+		Entry("70 minutes before the end", 70*time.Minute, v1.CapacityReservationStateExpiring),
+		Entry("71 minutes before the end", 71*time.Minute, v1.CapacityReservationStateActive),
+	)
 	It("shouldn't mark default capacity reservations as expiring 40 minutes prior to their endDate", func() {
 		out := awsEnv.EC2API.DescribeCapacityReservationsOutput.Clone()
 		for i := range out.CapacityReservations {

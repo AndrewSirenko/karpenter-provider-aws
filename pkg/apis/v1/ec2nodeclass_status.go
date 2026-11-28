@@ -235,7 +235,13 @@ func CapacityReservationTypeFromEC2(capacityReservationType ec2types.CapacityRes
 }
 
 func CapacityReservationFromEC2(clk clock.Clock, cr *ec2types.CapacityReservation) (CapacityReservation, error) {
-	const capacityReservationExpirationPeriod = time.Minute * 40
+	// EC2 starts reclaiming instance Capacity Blocks 30 minutes before the end time, and UltraServer Capacity Blocks
+	// must be empty 60 minutes before it. Drain 10 minutes ahead of each.
+	// https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-capacity-blocks.html
+	capacityReservationExpirationPeriod := time.Minute * 40
+	if cr.CapacityBlockId != nil {
+		capacityReservationExpirationPeriod = time.Minute * 70
+	}
 	// Guard against new instance match criteria added in the future. See https://github.com/kubernetes-sigs/karpenter/issues/806
 	// for a similar issue.
 	if !lo.Contains([]ec2types.InstanceMatchCriteria{
