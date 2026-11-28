@@ -150,7 +150,9 @@ func (b *CreateLaunchTemplateInputBuilder) Build(ctx context.Context) *ec2.Creat
 	}
 	// Gate this specifically since the update to CapacityReservationPreference will opt od / spot launches out of open
 	// ODCRs, which is a breaking change from the pre-native ODCR support behavior.
-	if b.LaunchMode(ctx) == LaunchModeTargeted {
+	// A NodeClass that selects no reservations keeps EC2's default open matching, as before native ODCR support. This is
+	// the upgrade path for users of open reservations once the ReservedCapacity gate is removed.
+	if b.LaunchMode(ctx) == LaunchModeTargeted && (b.options.CapacityType == karpv1.CapacityTypeReserved || b.options.CapacityReservationsSelected) {
 		lt.LaunchTemplateData.CapacityReservationSpecification = &ec2types.LaunchTemplateCapacityReservationSpecificationRequest{
 			CapacityReservationPreference: lo.Ternary(
 				b.options.CapacityType == karpv1.CapacityTypeReserved,

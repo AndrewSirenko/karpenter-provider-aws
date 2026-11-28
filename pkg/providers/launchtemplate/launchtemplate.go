@@ -223,21 +223,22 @@ func (p *DefaultProvider) CreateAMIOptions(ctx context.Context, nodeClass *v1.EC
 		return nil, fmt.Errorf("no security groups are present in the status")
 	}
 	return &amifamily.Options{
-		ClusterName:              options.FromContext(ctx).ClusterName,
-		ClusterEndpoint:          p.ClusterEndpoint,
-		ClusterCIDR:              p.ClusterCIDR.Load(),
-		InstanceProfile:          nodeClass.Status.InstanceProfile,
-		InstanceStorePolicy:      nodeClass.Spec.InstanceStorePolicy,
-		AMISelectorTerms:         nodeClass.Spec.AMISelectorTerms,
-		AMIs:                     nodeClass.Status.AMIs,
-		SecurityGroups:           nodeClass.Status.SecurityGroups,
-		Tags:                     tags,
-		Labels:                   labels,
-		CABundle:                 p.CABundle,
-		KubeDNSIP:                p.KubeDNSIP,
-		AssociatePublicIPAddress: nodeClass.Spec.AssociatePublicIPAddress,
-		IPPrefixCount:            nodeClass.Spec.IPPrefixCount,
-		NodeClassName:            nodeClass.Name,
+		ClusterName:                  options.FromContext(ctx).ClusterName,
+		ClusterEndpoint:              p.ClusterEndpoint,
+		ClusterCIDR:                  p.ClusterCIDR.Load(),
+		InstanceProfile:              nodeClass.Status.InstanceProfile,
+		InstanceStorePolicy:          nodeClass.Spec.InstanceStorePolicy,
+		AMISelectorTerms:             nodeClass.Spec.AMISelectorTerms,
+		AMIs:                         nodeClass.Status.AMIs,
+		SecurityGroups:               nodeClass.Status.SecurityGroups,
+		Tags:                         tags,
+		Labels:                       labels,
+		CABundle:                     p.CABundle,
+		KubeDNSIP:                    p.KubeDNSIP,
+		AssociatePublicIPAddress:     nodeClass.Spec.AssociatePublicIPAddress,
+		IPPrefixCount:                nodeClass.Spec.IPPrefixCount,
+		NodeClassName:                nodeClass.Name,
+		CapacityReservationsSelected: len(nodeClass.Spec.CapacityReservationSelectorTerms) != 0,
 	}, nil
 }
 

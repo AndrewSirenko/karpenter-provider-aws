@@ -93,14 +93,17 @@ type Options struct {
 	AMISelectorTerms    []v1.AMISelectorTerm `hash:"ignore"` // For Bottlerocket version resolution
 	AMIs                []v1.AMI             `hash:"ignore"` // Resolved AMIs for version extraction
 	// Level-triggered fields that may change out of sync.
-	SecurityGroups            []v1.SecurityGroup
-	Tags                      map[string]string
-	Labels                    map[string]string `hash:"ignore"`
-	KubeDNSIP                 net.IP
-	AssociatePublicIPAddress  *bool
-	IPPrefixCount             *int32
-	NodeClassName             string
-	ResolvedNetworkInterfaces []*ResolvedNetworkInterface `hash:"ignore"`
+	SecurityGroups           []v1.SecurityGroup
+	Tags                     map[string]string
+	Labels                   map[string]string `hash:"ignore"`
+	KubeDNSIP                net.IP
+	AssociatePublicIPAddress *bool
+	IPPrefixCount            *int32
+	NodeClassName            string
+	// CapacityReservationsSelected is true when the EC2NodeClass selects capacity reservations. Only then do on-demand
+	// and spot launches opt out of open reservations, so a NodeClass without selectors keeps EC2's open matching.
+	CapacityReservationsSelected bool
+	ResolvedNetworkInterfaces    []*ResolvedNetworkInterface `hash:"ignore"`
 }
 
 // LaunchTemplate holds the dynamically generated launch template parameters

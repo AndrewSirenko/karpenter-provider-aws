@@ -3348,6 +3348,8 @@ eviction-max-pod-grace-period = 10
 		"should set the capacity reservation specification according to the capacity reservation feature flag",
 		func(enabled bool) {
 			coreoptions.FromContext(ctx).FeatureGates.ReservedCapacity = enabled
+			// Only an EC2NodeClass that selects reservations opts its on-demand launches out of open matching.
+			nodeClass.Spec.CapacityReservationSelectorTerms = []v1.CapacityReservationSelectorTerm{{ID: "cr-unused"}}
 
 			pod := coretest.UnschedulablePod()
 			ExpectApplied(ctx, env.Client, pod, nodePool, nodeClass)
@@ -3371,6 +3373,37 @@ eviction-max-pod-grace-period = 10
 		},
 		Entry("enabled", true),
 		Entry("disabled", false),
+	)
+	DescribeTable(
+		"should keep open reservation matching for on-demand launches only when the EC2NodeClass selects no reservations",
+		func(selectors bool) {
+			coreoptions.FromContext(ctx).FeatureGates.ReservedCapacity = true
+			if !selectors {
+				nodeClass.Spec.CapacityReservationSelectorTerms = nil
+				nodeClass.Status.CapacityReservations = nil
+			} else if len(nodeClass.Spec.CapacityReservationSelectorTerms) == 0 {
+				nodeClass.Spec.CapacityReservationSelectorTerms = []v1.CapacityReservationSelectorTerm{{ID: "cr-unused"}}
+			}
+			nodePool.Spec.Template.Spec.Requirements = append(nodePool.Spec.Template.Spec.Requirements, karpv1.NodeSelectorRequirementWithMinValues{
+				Key: karpv1.CapacityTypeLabelKey, Operator: corev1.NodeSelectorOpIn, Values: []string{karpv1.CapacityTypeOnDemand},
+			})
+			pod := coretest.UnschedulablePod()
+			ExpectApplied(ctx, env.Client, pod, nodePool, nodeClass)
+			ExpectProvisioned(ctx, env.Client, cluster, cloudProvider, prov, pod)
+			ExpectScheduled(ctx, env.Client, pod)
+			Expect(awsEnv.EC2API.CreateLaunchTemplateBehavior.CalledWithInput.Len()).ToNot(BeZero())
+			for awsEnv.EC2API.CreateLaunchTemplateBehavior.CalledWithInput.Len() != 0 {
+				crs := awsEnv.EC2API.CreateLaunchTemplateBehavior.CalledWithInput.Pop().LaunchTemplateData.CapacityReservationSpecification
+				if selectors {
+					Expect(crs).ToNot(BeNil())
+					Expect(crs.CapacityReservationPreference).To(Equal(ec2types.CapacityReservationPreferenceNone))
+				} else {
+					Expect(crs).To(BeNil())
+				}
+			}
+		},
+		Entry("with selectors", true),
+		Entry("without selectors", false),
 	)
 	Context("EC2NodeClass Enclave Options", func() {
 		BeforeEach(func() {
