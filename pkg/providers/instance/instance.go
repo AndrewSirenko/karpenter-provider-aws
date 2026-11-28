@@ -358,7 +358,9 @@ func (p *DefaultProvider) Reboot(ctx context.Context, id string, operationID str
 	return nil
 }
 
-// ModifyCapacityReservationTarget sets only a target (no preference), the transition EC2 allows on a running instance.
+// ModifyCapacityReservationTarget re-targets a running instance at a reservation with preference capacity-reservations-only,
+// the same shape EC2 reports for instances Karpenter launches into a reservation. Releases that predate migration only
+// classify that shape as reserved, so sending it keeps a rollback from demoting migrated nodes.
 func (p *DefaultProvider) ModifyCapacityReservationTarget(ctx context.Context, id string, capacityReservationID string) error {
 	out, err := p.Get(ctx, id)
 	if err != nil {
@@ -373,7 +375,8 @@ func (p *DefaultProvider) ModifyCapacityReservationTarget(ctx context.Context, i
 	if _, err := p.ec2api.ModifyInstanceCapacityReservationAttributes(ctx, &ec2.ModifyInstanceCapacityReservationAttributesInput{
 		InstanceId: lo.ToPtr(id),
 		CapacityReservationSpecification: &ec2types.CapacityReservationSpecification{
-			CapacityReservationTarget: &ec2types.CapacityReservationTarget{CapacityReservationId: lo.ToPtr(capacityReservationID)},
+			CapacityReservationPreference: ec2types.CapacityReservationPreferenceCapacityReservationsOnly,
+			CapacityReservationTarget:     &ec2types.CapacityReservationTarget{CapacityReservationId: lo.ToPtr(capacityReservationID)},
 		},
 	}); err != nil {
 		// Only a missing instance means the NodeClaim is gone; a missing reservation is a client error.

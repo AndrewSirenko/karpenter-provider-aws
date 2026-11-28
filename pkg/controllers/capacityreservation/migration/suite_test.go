@@ -321,7 +321,7 @@ var _ = Describe("Capacity Reservation Migration Controller", func() {
 			input := awsEnv.EC2API.ModifyInstanceCapacityReservationAttributesBehavior.CalledWithInput.Pop()
 			Expect(*input.InstanceId).To(Equal(id))
 			Expect(*input.CapacityReservationSpecification.CapacityReservationTarget.CapacityReservationId).To(Equal("cr-1"))
-			Expect(input.CapacityReservationSpecification.CapacityReservationPreference).To(BeEmpty())
+			Expect(input.CapacityReservationSpecification.CapacityReservationPreference).To(Equal(ec2types.CapacityReservationPreferenceCapacityReservationsOnly))
 			nc = ExpectExists(ctx, env.Client, nc)
 			Expect(nc.Annotations).To(HaveKeyWithValue(v1.AnnotationCapacityReservationMigrationTarget, "cr-1"))
 			Expect(nc.Annotations).To(HaveKey(v1.AnnotationCapacityReservationMigrationRequestedAt))
