@@ -66,7 +66,8 @@ Karpenter uses [feature gates](https://kubernetes.io/docs/reference/command-line
 | SpotToSpotConsolidation | false   | Alpha  | v0.34.x |         |
 | NodeRepair              | false   | Alpha  | v1.1.x  |         |
 | ReservedCapacity        | false   | Alpha  | v1.3.x  | v1.5.x  |
-| ReservedCapacity        | true    | Beta   | v1.6.x  |         |
+| ReservedCapacity        | true    | Beta   | v1.6.x  | v1.15.x |
+| ReservedCapacity        | true    | GA     | v1.16.x |         |
 | NodeOverlay             | false   | Alpha  | v1.7.x  |         |
 | StaticCapacity          | false   | Alpha  | v1.8.x  |         |
 | CapacityBuffer          | false   | Alpha  | v1.13.x |         |
